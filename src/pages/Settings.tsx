@@ -19,7 +19,7 @@ import type { BusinessSettings } from '@/types';
 import { Building2, Save, Upload, Trash2, Globe, Mail, Phone, MapPin, FileText, RefreshCw, Info, Pencil, Check, X, Plus } from 'lucide-react';
 import BackupRestore from '@/components/BackupRestore';
 import { useState, useEffect } from 'react';
-import { pingServer } from '@/lib/apiClient';
+
 
 export default function Settings() {
   const {
@@ -41,45 +41,15 @@ export default function Settings() {
   const [currentVersion, setCurrentVersion] = useState('');
   const [checking, setChecking] = useState(false);
 
-  // LAN multi-user
-  const [lanMode, setLanMode] = useState<'standalone' | 'client'>(() =>
-    (typeof window !== 'undefined' && (localStorage.getItem('lan.mode') as any)) || 'standalone'
-  );
-  const [lanUrl, setLanUrl] = useState<string>(() =>
-    (typeof window !== 'undefined' && localStorage.getItem('lan.serverUrl')) || ''
-  );
-  const [lanTesting, setLanTesting] = useState(false);
-  const [lanStatus, setLanStatus] = useState<'idle' | 'ok' | 'fail'>('idle');
+  // Clean up legacy LAN-mode keys from older builds
+  useEffect(() => {
+    try {
+      localStorage.removeItem('lan.mode');
+      localStorage.removeItem('lan.serverUrl');
+    } catch { /* ignore */ }
+  }, []);
 
-  const saveNetwork = async () => {
-    if (lanMode === 'client') {
-      if (!lanUrl.trim()) {
-        toast({ title: 'Server URL required', description: 'Please enter the LAN server URL.', variant: 'destructive' });
-        return;
-      }
-      const ping = await pingServer(lanUrl);
-      if (!ping.ok) {
-        toast({ title: 'Cannot reach server', description: (ping as { error: string }).error, variant: 'destructive' });
-        return;
-      }
-    }
-    localStorage.setItem('lan.mode', lanMode);
-    localStorage.setItem('lan.serverUrl', lanUrl.trim());
-    toast({ title: 'Network settings saved', description: 'Reloading to apply changes…' });
-    setTimeout(() => window.location.reload(), 600);
-  };
 
-  const testConnection = async () => {
-    setLanTesting(true);
-    const res = await pingServer(lanUrl);
-    setLanTesting(false);
-    setLanStatus(res.ok ? 'ok' : 'fail');
-    toast({
-      title: res.ok ? 'Connection successful' : 'Connection failed',
-      description: res.ok ? `Server responded at ${new Date(res.time).toLocaleTimeString()}` : (res as { error: string }).error,
-      variant: res.ok ? 'default' : 'destructive',
-    });
-  };
 
   const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
 
@@ -593,67 +563,8 @@ export default function Settings() {
         {/* Backup & Restore - Electron only */}
         {isElectron && <BackupRestore />}
 
-        {/* Network / Multi-user (LAN) */}
-        <Card>
-          <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Globe className="h-4 w-4 text-primary" />
-              Network / Multi-user
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Share data between PCs on the same local network.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 space-y-3">
-            <div className="space-y-1.5 max-w-md">
-              <Label className="text-xs">Mode</Label>
-              <Select value={lanMode} onValueChange={(v) => setLanMode(v as 'standalone' | 'client')}>
-                <SelectTrigger className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="standalone">Standalone (this PC only)</SelectItem>
-                  <SelectItem value="client">Client (connect to LAN server)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
 
-            {lanMode === 'client' && (
-              <div className="space-y-1.5 max-w-md">
-                <Label htmlFor="lanUrl" className="text-xs">Server URL</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="lanUrl"
-                    value={lanUrl}
-                    onChange={(e) => { setLanUrl(e.target.value); setLanStatus('idle'); }}
-                    placeholder="http://192.168.1.50:4000"
-                    className="h-9 flex-1"
-                  />
-                  <Button type="button" size="sm" variant="outline" onClick={testConnection} disabled={lanTesting || !lanUrl}>
-                    {lanTesting ? 'Testing…' : 'Test'}
-                  </Button>
-                </div>
-                {lanStatus === 'ok' && <p className="text-[11px] text-primary">✓ Server reachable</p>}
-                {lanStatus === 'fail' && <p className="text-[11px] text-destructive">✗ Could not reach server</p>}
-              </div>
-            )}
 
-            <div className="rounded-md border p-3 bg-muted/30 max-w-md">
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                <strong className="text-foreground">To host the database on a server PC:</strong> on that PC,
-                open the <code>server/</code> folder, run <code>npm install</code> then <code>npm start</code>.
-                It will print a LAN URL — paste it on each client PC.
-              </p>
-            </div>
-
-            <div className="flex justify-end max-w-md">
-              <Button type="button" size="sm" onClick={saveNetwork} className="gap-1.5">
-                <Save className="h-4 w-4" />
-                Save Network Settings
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
 
         {/* Save Button */}
         <div className="flex justify-end">
