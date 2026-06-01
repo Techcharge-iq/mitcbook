@@ -145,10 +145,11 @@ export default function Dashboard() {
       return new Intl.NumberFormat('en-IN', {
         style: 'currency',
         currency: settings.currency,
-        maximumFractionDigits: 2,
+        minimumFractionDigits: 3,
+        maximumFractionDigits: 3,
       }).format(value);
     } catch {
-      return `${currencySymbol}${value.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+      return `${currencySymbol}${value.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}`;
     }
   };
 
