@@ -73,7 +73,7 @@ export default function ProjectForm() {
         ...prev,
         activities: (prev.activities || []).map((activity) => {
           const percentage = Number(activity.percentage || 0);
-          const calculatedValue = Number(((projectValue * percentage) / 100).toFixed(2));
+          const calculatedValue = Number(((projectValue * percentage) / 100).toFixed(3));
           return { ...activity, value: calculatedValue, calculatedValue };
         }),
       };
@@ -128,7 +128,7 @@ export default function ProjectForm() {
       if (field === 'percentage') {
         const percentage = Number(value) || 0;
         const projectValue = Number(prev.totalValue || 0);
-        const calculatedValue = Number(((projectValue * percentage) / 100).toFixed(2));
+        const calculatedValue = Number(((projectValue * percentage) / 100).toFixed(3));
         current.percentage = percentage;
         current.value = calculatedValue;
         current.calculatedValue = calculatedValue;

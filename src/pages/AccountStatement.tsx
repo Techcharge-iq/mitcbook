@@ -94,9 +94,9 @@ export default function AccountStatement() {
         t.reference,
         t.referenceType,
         t.description,
-        t.debit.toFixed(2),
-        t.credit.toFixed(2),
-        running.toFixed(2),
+        t.debit.toFixed(3),
+        t.credit.toFixed(3),
+        running.toFixed(3),
       ]);
     });
     const csv = rows.map((r) => r.map((c) => `"${c}"`).join(',')).join('\n');

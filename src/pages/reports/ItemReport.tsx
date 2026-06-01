@@ -130,7 +130,7 @@ export default function ItemReport() {
     rows.forEach((r) => {
       lines.push([
         `"${r.name}"`, r.unit ?? '', r.opening, r.purchasedQty, r.soldQty, r.closing,
-        r.salesValue.toFixed(2), r.purchaseValue.toFixed(2), r.vatCollected.toFixed(2), r.vatPaid.toFixed(2),
+        r.salesValue.toFixed(3), r.purchaseValue.toFixed(3), r.vatCollected.toFixed(3), r.vatPaid.toFixed(3),
       ].join(','));
     });
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
