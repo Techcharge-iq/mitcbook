@@ -228,7 +228,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { data: sess } = await supabase.auth.getSession();
       const uid = sess.session?.user?.id;
       if (!uid) return;
-      await supabase.from('business_settings').upsert({
+      const payload = {
         user_id: uid,
         company_id: selectedCompanyId,
         name: settings.name,
@@ -244,7 +244,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         bank_name: settings.bankName,
         bank_account_number: settings.bankAccountNumber,
         signature: settings.signature,
-      }, { onConflict: 'user_id,company_id' });
+      };
+      const { data: existing } = await supabase
+        .from('business_settings')
+        .select('id')
+        .eq('user_id', uid)
+        .eq('company_id', selectedCompanyId)
+        .maybeSingle();
+      if (existing?.id) {
+        await supabase.from('business_settings').update(payload).eq('id', existing.id);
+      } else {
+        await supabase.from('business_settings').insert(payload);
+      }
     })();
   }, [settings, selectedCompanyId]);
 
