@@ -304,7 +304,7 @@ export async function generatePDFBlob({ type, document: docData, client, setting
               </td>
               <td>${item.quantity}</td>
               <td>${currencySymbol}${item.rate.toLocaleString('en-IN')}</td>
-              <td>${currencySymbol}${(item.total + (item.vatApplicable ? (item.vatAmount ?? 0) : 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+              <td>${currencySymbol}${(item.total + (item.vatApplicable ? (item.vatAmount ?? 0) : 0)).toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -314,19 +314,19 @@ export async function generatePDFBlob({ type, document: docData, client, setting
         <div class="totals-box">
           <div class="total-row">
             <span>Subtotal</span>
-            <span>${currencySymbol}${docData.items.reduce((s, i) => s + i.total, 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+            <span>${currencySymbol}${docData.items.reduce((s, i) => s + i.total, 0).toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
           </div>
           <div class="total-row">
             <span>VAT</span>
-            <span>${currencySymbol}${docData.items.reduce((s, i) => s + (i.vatApplicable ? (i.vatAmount ?? 0) : 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+            <span>${currencySymbol}${docData.items.reduce((s, i) => s + (i.vatApplicable ? (i.vatAmount ?? 0) : 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
           </div>
           <div class="total-row">
             <span>Total After VAT</span>
-            <span>${currencySymbol}${docData.netTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+            <span>${currencySymbol}${docData.netTotal.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
           </div>
           <div class="total-row grand">
             <span>Grand Total</span>
-            <span>${currencySymbol}${docData.netTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+            <span>${currencySymbol}${docData.netTotal.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
           </div>
         </div>
       </div>

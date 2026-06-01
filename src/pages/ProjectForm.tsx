@@ -260,7 +260,7 @@ export default function ProjectForm() {
               </div>
               <div className="rounded-lg border bg-muted/20 p-3">
                 <p className="text-[11px] uppercase text-muted-foreground">Total Value</p>
-                <p className="text-sm font-semibold">{currencySymbols[settings.currency]}{totalActivityValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                <p className="text-sm font-semibold">{currencySymbols[settings.currency]}{totalActivityValue.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
               </div>
               <div className="rounded-lg border bg-muted/20 p-3">
                 <p className="text-[11px] uppercase text-muted-foreground">Remaining %</p>
