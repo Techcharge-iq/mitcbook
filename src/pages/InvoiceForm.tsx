@@ -553,6 +553,10 @@ export default function InvoiceForm() {
               </div>
             </div>
             <div className="space-y-1.5">
+              <Label className="text-xs">Invoice Date</Label>
+              <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} className="h-9" />
+            </div>
+            <div className="space-y-1.5">
               <Label className="text-xs">Due Date</Label>
               <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="h-9" />
             </div>
