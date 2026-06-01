@@ -190,6 +190,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                <SyncStatusIndicator />
                 {user ? (
                   <>
                     <span className="text-xs text-muted-foreground hidden sm:inline-flex items-center gap-2">
