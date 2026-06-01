@@ -213,6 +213,15 @@ export async function getUserId(): Promise<string | null> {
   return data.session?.user?.id ?? null;
 }
 
+// ---------------- Sync status bus ----------------
+export type SyncEvent = 'saving' | 'saved' | 'error' | 'remote-update';
+type SyncListener = (e: SyncEvent) => void;
+const listeners = new Set<SyncListener>();
+export const syncBus = {
+  emit(e: SyncEvent) { listeners.forEach((l) => { try { l(e); } catch {} }); },
+  subscribe(cb: SyncListener) { listeners.add(cb); return () => { listeners.delete(cb); }; },
+};
+
 export async function cloudLoadAll<T>(collection: string): Promise<T[] | null> {
   const meta = COLLECTIONS[collection];
   if (!meta) return null;
@@ -226,6 +235,24 @@ export async function cloudLoadAll<T>(collection: string): Promise<T[] | null> {
   return (data ?? []).map((r) => fromRow(collection, r)) as T[];
 }
 
+export async function cloudFetchById<T = any>(collection: string, id: string): Promise<T | null> {
+  const meta = COLLECTIONS[collection];
+  if (!meta || !id) return null;
+  const uid = await getUserId();
+  if (!uid) return null;
+  const { data, error } = await supabase
+    .from(meta.table as any)
+    .select('*')
+    .eq('id', id)
+    .eq('user_id', uid)
+    .maybeSingle();
+  if (error) {
+    console.warn(`[cloud] fetchById ${collection}/${id} failed:`, error.message);
+    return null;
+  }
+  return data ? (fromRow(collection, data) as T) : null;
+}
+
 export async function cloudUpsert(collection: string, item: any): Promise<void> {
   const meta = COLLECTIONS[collection];
   if (!meta) return;
@@ -234,8 +261,14 @@ export async function cloudUpsert(collection: string, item: any): Promise<void> 
   const row = toRow(collection, item);
   if (!row) return;
   row.user_id = uid;
+  syncBus.emit('saving');
   const { error } = await supabase.from(meta.table as any).upsert(row, { onConflict: 'id' });
-  if (error) console.warn(`[cloud] upsert ${collection}/${item.id} failed:`, error.message);
+  if (error) {
+    console.warn(`[cloud] upsert ${collection}/${item.id} failed:`, error.message);
+    syncBus.emit('error');
+  } else {
+    syncBus.emit('saved');
+  }
 }
 
 export async function cloudDelete(collection: string, id: string): Promise<void> {
@@ -243,8 +276,14 @@ export async function cloudDelete(collection: string, id: string): Promise<void>
   if (!meta) return;
   const uid = await getUserId();
   if (!uid) return;
+  syncBus.emit('saving');
   const { error } = await supabase.from(meta.table as any).delete().eq('id', id).eq('user_id', uid);
-  if (error) console.warn(`[cloud] delete ${collection}/${id} failed:`, error.message);
+  if (error) {
+    console.warn(`[cloud] delete ${collection}/${id} failed:`, error.message);
+    syncBus.emit('error');
+  } else {
+    syncBus.emit('saved');
+  }
 }
 
 export function cloudSubscribe(
