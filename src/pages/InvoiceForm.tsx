@@ -284,6 +284,7 @@ export default function InvoiceForm() {
         clientId,
         items,
         netTotal: grandTotal,
+        invoiceDate,
         dueDate,
         notes,
         terms,
