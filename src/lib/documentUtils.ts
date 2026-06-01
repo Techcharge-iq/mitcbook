@@ -1,5 +1,6 @@
 import type { Quotation, Invoice, Client, BusinessSettings } from '@/types';
 import { currencySymbols } from '@/types';
+import { cloudFetchById, getUserId } from '@/lib/cloudSync';
 
 interface DocumentData {
   type: 'quotation' | 'invoice';
