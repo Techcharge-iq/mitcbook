@@ -84,7 +84,7 @@ export default function SalesBySalesman() {
                   {totals.map((r) => (
                     <tr key={r.salesmanId} className="border-b last:border-0 hover:bg-muted/30">
                       <td className="py-2 font-medium">{r.name}</td>
-                      <td className="py-2 text-right font-semibold">{currencySymbol}{r.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                      <td className="py-2 text-right font-semibold">{currencySymbol}{r.total.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</td>
                     </tr>
                   ))}
                 </tbody>

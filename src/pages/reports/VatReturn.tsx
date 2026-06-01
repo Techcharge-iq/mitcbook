@@ -75,20 +75,20 @@ export default function VatReturn() {
     return { outputLines, inputLines, outputTotal, inputTotal, netPayable: outputTotal - inputTotal };
   }, [invoices, purchaseInvoices, clients, from, to]);
 
-  const fmt = (n: number) => `${currencySymbol}${n.toFixed(2)}`;
+  const fmt = (n: number) => `${currencySymbol}${n.toFixed(3)}`;
 
   const exportCsv = () => {
     const rows: string[] = ['Section,Doc,Date,Party,Taxable,VAT%,VAT Amount'];
     outputLines.forEach((l) =>
-      rows.push(`Output,${l.docNumber},${l.date},"${l.party}",${l.taxable.toFixed(2)},${l.vatRate},${l.vatAmount.toFixed(2)}`)
+      rows.push(`Output,${l.docNumber},${l.date},"${l.party}",${l.taxable.toFixed(3)},${l.vatRate},${l.vatAmount.toFixed(3)}`)
     );
     inputLines.forEach((l) =>
-      rows.push(`Input,${l.docNumber},${l.date},"${l.party}",${l.taxable.toFixed(2)},${l.vatRate},${l.vatAmount.toFixed(2)}`)
+      rows.push(`Input,${l.docNumber},${l.date},"${l.party}",${l.taxable.toFixed(3)},${l.vatRate},${l.vatAmount.toFixed(3)}`)
     );
     rows.push('');
-    rows.push(`Summary,,,,,Output VAT,${outputTotal.toFixed(2)}`);
-    rows.push(`Summary,,,,,Input VAT,${inputTotal.toFixed(2)}`);
-    rows.push(`Summary,,,,,Net Payable,${netPayable.toFixed(2)}`);
+    rows.push(`Summary,,,,,Output VAT,${outputTotal.toFixed(3)}`);
+    rows.push(`Summary,,,,,Input VAT,${inputTotal.toFixed(3)}`);
+    rows.push(`Summary,,,,,Net Payable,${netPayable.toFixed(3)}`);
     const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

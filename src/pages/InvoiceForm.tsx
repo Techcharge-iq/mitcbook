@@ -481,7 +481,7 @@ export default function InvoiceForm() {
                 <div className="grid gap-3 sm:grid-cols-2 mt-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs">Project Billing Value</Label>
-                    <Input type="text" value={`${currencySymbol}${projectBillingValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`} disabled className="h-9 bg-muted/30" />
+                    <Input type="text" value={`${currencySymbol}${projectBillingValue.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}`} disabled className="h-9 bg-muted/30" />
                   </div>
                 </div>
               </>
@@ -578,27 +578,27 @@ export default function InvoiceForm() {
             <div className="grid gap-3 sm:grid-cols-5">
               <div className="rounded-md border bg-muted/20 p-3">
                 <p className="text-[11px] uppercase text-muted-foreground">Project Value</p>
-                <p className="text-sm font-semibold">{currencySymbol}{projectSummary.projectTotalValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                <p className="text-sm font-semibold">{currencySymbol}{projectSummary.projectTotalValue.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
               </div>
               <div className="rounded-md border bg-muted/20 p-3">
                 <p className="text-[11px] uppercase text-muted-foreground">Previous</p>
                 <p className="text-sm font-semibold">{projectSummary.previousPercentage.toFixed(2)}%</p>
-                <p className="text-xs text-muted-foreground">{currencySymbol}{projectSummary.previousAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                <p className="text-xs text-muted-foreground">{currencySymbol}{projectSummary.previousAmount.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
               </div>
               <div className="rounded-md border bg-muted/20 p-3">
                 <p className="text-[11px] uppercase text-muted-foreground">Current</p>
                 <p className="text-sm font-semibold">{projectSummary.currentPercentage.toFixed(2)}%</p>
-                <p className="text-xs text-muted-foreground">{currencySymbol}{projectSummary.currentAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                <p className="text-xs text-muted-foreground">{currencySymbol}{projectSummary.currentAmount.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
               </div>
               <div className="rounded-md border bg-muted/20 p-3">
                 <p className="text-[11px] uppercase text-muted-foreground">Total Progress</p>
                 <p className="text-sm font-semibold">{projectSummary.totalInvoicedPercentage.toFixed(2)}%</p>
-                <p className="text-xs text-muted-foreground">{currencySymbol}{projectSummary.totalInvoicedAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                <p className="text-xs text-muted-foreground">{currencySymbol}{projectSummary.totalInvoicedAmount.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
               </div>
               <div className="rounded-md border bg-muted/20 p-3">
                 <p className="text-[11px] uppercase text-muted-foreground">Remaining</p>
                 <p className="text-sm font-semibold">{projectSummary.remainingPercentage.toFixed(2)}%</p>
-                <p className="text-xs text-muted-foreground">{currencySymbol}{projectSummary.remainingAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                <p className="text-xs text-muted-foreground">{currencySymbol}{projectSummary.remainingAmount.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
               </div>
             </div>
             <Progress value={Math.min(100, Math.max(0, projectSummary.totalInvoicedPercentage))} />
@@ -613,7 +613,7 @@ export default function InvoiceForm() {
             <p className="text-xs text-muted-foreground">Select the project activities to include on this invoice. The current billing percentage and value are calculated from these selections.</p>
             <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
               <span>{selectedProjectActivities.length} activity selected</span>
-              <span>Billing {projectInvoicePercentage.toFixed(2)}% / {currencySymbol}{projectBillingValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              <span>Billing {projectInvoicePercentage.toFixed(2)}% / {currencySymbol}{projectBillingValue.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
             </div>
             <div className="space-y-2">
               {projectActivities.length > 0 ? projectActivities.map((activity) => (
@@ -629,7 +629,7 @@ export default function InvoiceForm() {
                   />
                   <div className="min-w-0">
                     <p className="text-sm font-medium">{activity.name}</p>
-                    <p className="text-xs text-muted-foreground">{activity.percentage}% | {currencySymbol}{activity.value.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-xs text-muted-foreground">{activity.percentage}% | {currencySymbol}{activity.value.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
                   </div>
                 </label>
               )) : (
@@ -673,7 +673,7 @@ export default function InvoiceForm() {
                     </td>
                     <td className="py-2"><Input type="number" min="1" value={item.quantity} onChange={(e) => updateItem(index, 'quantity', e.target.value)} className="h-8 text-right" /></td>
                     <td className="py-2"><Input type="number" min="0" step="0.01" value={item.rate} onChange={(e) => updateItem(index, 'rate', e.target.value)} className="h-8 text-right" /></td>
-                    <td className="py-2 text-right font-medium">{currencySymbol}{(item.total + (item.vatApplicable ? (item.vatAmount ?? 0) : 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                    <td className="py-2 text-right font-medium">{currencySymbol}{(item.total + (item.vatApplicable ? (item.vatAmount ?? 0) : 0)).toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</td>
                     <td className="py-2"><Button type="button" variant="ghost" size="icon" onClick={() => removeItem(index)} className="h-7 w-7"><Trash2 className="h-3.5 w-3.5" /></Button></td>
                   </tr>
                 ))}
@@ -696,10 +696,10 @@ export default function InvoiceForm() {
           </div>
           <div className="mt-3 flex justify-end">
             <div className="w-full sm:w-64 rounded-lg bg-primary/10 p-2.5 space-y-1">
-              <div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">Subtotal</span><span>{currencySymbol}{netTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div>
-              <div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">VAT</span><span>{currencySymbol}{vatTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div>
-              <div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">Total After VAT</span><span>{currencySymbol}{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div>
-              <div className="flex items-center justify-between text-sm font-bold pt-1 border-t"><span>Grand Total</span><span>{currencySymbol}{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div>
+              <div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">Subtotal</span><span>{currencySymbol}{netTotal.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span></div>
+              <div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">VAT</span><span>{currencySymbol}{vatTotal.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span></div>
+              <div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">Total After VAT</span><span>{currencySymbol}{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span></div>
+              <div className="flex items-center justify-between text-sm font-bold pt-1 border-t"><span>Grand Total</span><span>{currencySymbol}{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span></div>
             </div>
           </div>
         </CardContent>

@@ -94,9 +94,9 @@ export default function AccountStatement() {
         t.reference,
         t.referenceType,
         t.description,
-        t.debit.toFixed(2),
-        t.credit.toFixed(2),
-        running.toFixed(2),
+        t.debit.toFixed(3),
+        t.credit.toFixed(3),
+        running.toFixed(3),
       ]);
     });
     const csv = rows.map((r) => r.map((c) => `"${c}"`).join(',')).join('\n');
@@ -194,7 +194,7 @@ export default function AccountStatement() {
             <CardContent className="p-3">
               <p className="text-[10px] uppercase text-muted-foreground tracking-wide">{c.label}</p>
               <p className={cn('text-lg font-bold mt-0.5', c.value < 0 && 'text-destructive')}>
-                {currencySymbol}{Math.abs(c.value).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                {currencySymbol}{Math.abs(c.value).toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                 {c.value < 0 && ' Cr'}
               </p>
             </CardContent>
@@ -226,7 +226,7 @@ export default function AccountStatement() {
                     <td className="px-3 py-2 text-right text-xs">—</td>
                     <td className="px-3 py-2 text-right text-xs">—</td>
                     <td className="px-3 py-2 text-right text-xs font-medium">
-                      {currencySymbol}{Math.abs(openingBalance).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      {currencySymbol}{Math.abs(openingBalance).toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                       {openingBalance < 0 ? ' Cr' : ' Dr'}
                     </td>
                   </tr>
@@ -252,13 +252,13 @@ export default function AccountStatement() {
                         </td>
                         <td className="px-3 py-2 text-xs hidden sm:table-cell text-muted-foreground">{t.description}</td>
                         <td className="px-3 py-2 text-right text-xs">
-                          {t.debit > 0 ? `${currencySymbol}${t.debit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—'}
+                          {t.debit > 0 ? `${currencySymbol}${t.debit.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}` : '—'}
                         </td>
                         <td className="px-3 py-2 text-right text-xs">
-                          {t.credit > 0 ? `${currencySymbol}${t.credit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—'}
+                          {t.credit > 0 ? `${currencySymbol}${t.credit.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}` : '—'}
                         </td>
                         <td className={cn('px-3 py-2 text-right text-xs font-medium', runningBalance < 0 && 'text-destructive')}>
-                          {currencySymbol}{Math.abs(runningBalance).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          {currencySymbol}{Math.abs(runningBalance).toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                           {runningBalance < 0 ? ' Cr' : ' Dr'}
                         </td>
                       </tr>

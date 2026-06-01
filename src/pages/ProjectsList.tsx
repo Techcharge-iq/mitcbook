@@ -98,16 +98,16 @@ export default function ProjectsList() {
                     <div className="grid gap-3 sm:grid-cols-4">
                       <div className="rounded-lg border bg-muted/20 p-3">
                         <p className="text-[11px] uppercase text-muted-foreground">Value</p>
-                        <p className="text-sm font-semibold">{currencySymbol}{project.totalValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                        <p className="text-sm font-semibold">{currencySymbol}{project.totalValue.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
                       </div>
                       <div className="rounded-lg border bg-muted/20 p-3">
                         <p className="text-[11px] uppercase text-muted-foreground">Invoiced</p>
-                        <p className="text-sm font-semibold">{currencySymbol}{totals.invoicedAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                        <p className="text-sm font-semibold">{currencySymbol}{totals.invoicedAmount.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
                         <p className="text-xs text-muted-foreground">{totals.invoicedPercentage.toFixed(2)}%</p>
                       </div>
                       <div className="rounded-lg border bg-muted/20 p-3">
                         <p className="text-[11px] uppercase text-muted-foreground">Remaining</p>
-                        <p className="text-sm font-semibold">{currencySymbol}{totals.remainingAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                        <p className="text-sm font-semibold">{currencySymbol}{totals.remainingAmount.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
                         <p className="text-xs text-muted-foreground">{totals.remainingPercentage.toFixed(2)}%</p>
                       </div>
                       <div className="rounded-lg border bg-muted/20 p-3">

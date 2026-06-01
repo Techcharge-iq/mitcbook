@@ -73,7 +73,7 @@ export default function ProjectForm() {
         ...prev,
         activities: (prev.activities || []).map((activity) => {
           const percentage = Number(activity.percentage || 0);
-          const calculatedValue = Number(((projectValue * percentage) / 100).toFixed(2));
+          const calculatedValue = Number(((projectValue * percentage) / 100).toFixed(3));
           return { ...activity, value: calculatedValue, calculatedValue };
         }),
       };
@@ -128,7 +128,7 @@ export default function ProjectForm() {
       if (field === 'percentage') {
         const percentage = Number(value) || 0;
         const projectValue = Number(prev.totalValue || 0);
-        const calculatedValue = Number(((projectValue * percentage) / 100).toFixed(2));
+        const calculatedValue = Number(((projectValue * percentage) / 100).toFixed(3));
         current.percentage = percentage;
         current.value = calculatedValue;
         current.calculatedValue = calculatedValue;
@@ -260,7 +260,7 @@ export default function ProjectForm() {
               </div>
               <div className="rounded-lg border bg-muted/20 p-3">
                 <p className="text-[11px] uppercase text-muted-foreground">Total Value</p>
-                <p className="text-sm font-semibold">{currencySymbols[settings.currency]}{totalActivityValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                <p className="text-sm font-semibold">{currencySymbols[settings.currency]}{totalActivityValue.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
               </div>
               <div className="rounded-lg border bg-muted/20 p-3">
                 <p className="text-[11px] uppercase text-muted-foreground">Remaining %</p>
