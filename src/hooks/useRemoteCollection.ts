@@ -7,6 +7,7 @@ import {
   cloudUpsert,
   getUserId,
   isSyncedCollection,
+  syncBus,
 } from '@/lib/cloudSync';
 import { supabase } from '@/integrations/supabase/client';
 
