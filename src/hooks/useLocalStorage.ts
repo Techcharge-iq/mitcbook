@@ -1,0 +1,71 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+
+/**
+ * A storage-error event is dispatched when a write fails so any listener
+ * (e.g. a global toast handler) can surface it without coupling this hook
+ * to the toast system directly.
+ */
+function dispatchStorageError(key: string, isQuota: boolean) {
+  const message = isQuota
+    ? `Storage is full — could not save "${key}". Please export a backup to free up space.`
+    : `Could not save data for "${key}". Check your browser's storage permissions.`;
+  window.dispatchEvent(new CustomEvent('bookit:storage-error', { detail: { key, isQuota, message } }));
+}
+
+export function useLocalStorage<T>(
+  key: string,
+  initialValue: T,
+): [T, (value: T | ((prev: T) => T)) => void] {
+  // Keep initialValue in a ref so callers can pass fresh literals (e.g. `[]`)
+  // without changing the identity of our read function on every render.
+  const initialRef = useRef(initialValue);
+
+  const readValue = useCallback((): T => {
+    if (typeof window === 'undefined') return initialRef.current;
+    try {
+      const item = window.localStorage.getItem(key);
+      return item ? (JSON.parse(item) as T) : initialRef.current;
+    } catch (error) {
+      console.warn(`[localStorage] Error reading key "${key}":`, error);
+      return initialRef.current;
+    }
+  }, [key]);
+
+  const [storedValue, setStoredValue] = useState<T>(readValue);
+
+  // Keep latest value in a ref so setValue can stay stable across renders.
+  const storedRef = useRef(storedValue);
+  useEffect(() => {
+    storedRef.current = storedValue;
+  }, [storedValue]);
+
+  const setValue = useCallback(
+    (value: T | ((prev: T) => T)) => {
+      try {
+        const newValue = value instanceof Function ? value(storedRef.current) : value;
+        window.localStorage.setItem(key, JSON.stringify(newValue));
+        storedRef.current = newValue;
+        setStoredValue(newValue);
+      } catch (error) {
+        console.error(`[localStorage] Error writing key "${key}":`, error);
+        const isQuota =
+          error instanceof DOMException &&
+          (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED');
+        dispatchStorageError(key, isQuota);
+      }
+    },
+    [key],
+  );
+
+  // Re-read only when the key itself changes (e.g. switching companies).
+  const lastKeyRef = useRef(key);
+  useEffect(() => {
+    if (lastKeyRef.current === key) return;
+    lastKeyRef.current = key;
+    const fresh = readValue();
+    storedRef.current = fresh;
+    setStoredValue(fresh);
+  }, [key, readValue]);
+
+  return [storedValue, setValue];
+}

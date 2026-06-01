@@ -1,0 +1,50 @@
+{
+  "appId": "com.bookit.app",
+  "productName": "BookIt",
+
+  "directories": {
+    "buildResources": "public",
+    "output": "dist-electron"
+  },
+
+  "files": [
+    "dist/**/*",
+    "main.cjs",
+    "preload.cjs",
+    "diagnostic-logger.cjs",
+    "package.json",
+    "!**/*.map",
+    "!src",
+    "!test",
+    "!docs",
+    "!*.md",
+    "!node_modules/.cache"
+  ],
+  
+  "asar": true,
+  "asarUnpack": [
+    "node_modules/sqlite3/**/*"
+  ],
+
+  "compression": "maximum",
+
+  "npmRebuild": false,
+  "nodeGypRebuild": false,
+
+  "win": {
+    "target": ["nsis"],
+    "icon": "public/icon.ico",
+    "signAndEditExecutable": false
+  },
+
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "allowElevation": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "deleteAppDataOnUninstall": false,
+    "artifactName": "${productName} Setup ${version}.exe"
+  }
+}
