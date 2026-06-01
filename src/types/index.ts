@@ -144,6 +144,7 @@ export interface PurchaseInvoice {
   items: LineItem[];
   netTotal: number;
   status: PurchaseInvoiceStatus;
+  invoiceDate?: string;
   dueDate: string;
   notes: string;
   terms: string;
