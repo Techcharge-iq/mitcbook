@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useTheme } from 'next-themes';
+import { useAuth } from '@/hooks/useAuth';
 import {
   LayoutDashboard,
   FileText,
@@ -19,6 +20,8 @@ import {
   Moon,
   ArrowRight,
   Building2,
+  LogIn,
+  LogOut,
 } from 'lucide-react';
 
 interface AppLayoutProps {
@@ -50,6 +53,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [reportsOpen, setReportsOpen] = useState(location.pathname.startsWith('/reports'));
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const { user, role, signOut } = useAuth();
+  const isAuthRoute = location.pathname === '/auth';
+
+  if (isAuthRoute) return <>{children}</>;
 
   useEffect(() => {
     setMounted(true);
@@ -182,6 +189,27 @@ export function AppLayout({ children }: AppLayoutProps) {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                {user ? (
+                  <>
+                    <span className="text-xs text-muted-foreground hidden sm:inline-flex items-center gap-2">
+                      {user.email}
+                      {role && (
+                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-primary">
+                          {role}
+                        </span>
+                      )}
+                    </span>
+                    <Button size="sm" variant="outline" onClick={signOut} className="flex items-center gap-2">
+                      <LogOut className="h-4 w-4" /> Sign out
+                    </Button>
+                  </>
+                ) : (
+                  <Button asChild size="sm" variant="outline">
+                    <Link to="/auth" className="flex items-center gap-2">
+                      <LogIn className="h-4 w-4" /> Sign in
+                    </Link>
+                  </Button>
+                )}
                 <Button asChild size="sm" variant="secondary">
                   <Link to="/quotations/new" className="flex items-center gap-2">
                     <FileText className="h-4 w-4" /> New Quote

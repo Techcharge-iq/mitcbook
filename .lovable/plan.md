@@ -1,101 +1,63 @@
-# Fix App Freeze on Sales / Quotations / Projects Pages
+# Performance verification + Authentication with roles
 
-## Root cause (single underlying problem)
+## Part 1 — Performance fixes (verification only)
 
-After investigation, the slowness is **not** in the list pages themselves — they are small and render simple cards. The freeze is caused by a render-storm coming from `AppContext` and `useLocalStorage`. Three concrete issues, in order of impact:
+All 4 fixes from `.lovable/plan.md` are already present in the codebase:
 
-### Issue 1 — `useLocalStorage` returns a new `setValue` on every render
-**File:** `src/hooks/useLocalStorage.ts` (lines 33-46)
+| Fix | File | Status |
+|-----|------|--------|
+| A — stable `setValue` via ref | `src/hooks/useLocalStorage.ts` | Done |
+| B — `useMemo` provider value | `src/contexts/AppContext.tsx` (line 1117) | Done |
+| C — guarded auto-number effect | `src/pages/InvoiceForm.tsx` (line 144) | Done |
+| D — memoized payments map | `src/pages/InvoicesList.tsx` (line 30) | Done |
 
-```ts
-const setValue = useCallback((value) => { … }, [key, storedValue]);
-```
+Action: open Sales / Quotations / Projects in the preview and confirm no freeze. If any page is still slow, fix only that page (no broad refactor). No credit spent here unless a regression is found.
 
-Because `storedValue` is in the deps, `setValue` gets a **new identity every time the state changes**. This is consumed 13+ times in `AppContext.tsx` (clients, quotations, invoices, projects, payments, journalEntries, …). The result:
+## Part 2 — Authentication (email/password + Google, with roles)
 
-- Every effect downstream that depends on `setX` re-fires on every state change.
-- `useRemoteCollection.setAndPush` (deps `[collection, remote, setValue]`) is itself recreated on every render, so its consumers' setters are also unstable.
-- The `AppContext.Provider` value object is a new literal on every render, so **every consumer re-renders on every state change of any collection**. Saving an invoice triggers 4-6 state updates in sequence (invoice, journalEntries, accountBalances, audit log, items stock) — each one re-renders InvoiceForm, both lists, the radial menu, the dashboard, etc.
+### Database (1 migration)
 
-### Issue 2 — `InvoiceForm` regenerates the invoice number on every context render
-**File:** `src/pages/InvoiceForm.tsx` (lines 100-104)
+1. `app_role` enum: `admin`, `user`.
+2. `user_roles` table (`id`, `user_id`, `role`, `created_at`, unique `(user_id, role)`).
+3. `has_role(_user_id, _role)` SECURITY DEFINER function.
+4. GRANTs + RLS on `user_roles`:
+   - Users can read their own roles.
+   - Only admins can insert/update/delete roles (via `has_role`).
+5. Add **admin override** policies to existing tables (`clients`, `quotations`, `invoices`, `projects`, `purchase_invoices`, `payments`, `vouchers`, `journal_entries`, `accounts`, `items`, `salesmen`, `companies`, `business_settings`, `audit_log`): a permissive `FOR ALL` policy `USING (has_role(auth.uid(), 'admin'))`. Regular users keep the existing `own *` policies → see only their own data; admins see and manage everything.
+6. Trigger on `auth.users` insert → call existing `handle_new_user()` (already creates profile). Extend trigger to also insert a default `user` role into `user_roles`. First registered user becomes `admin` (checked via `NOT EXISTS` on `user_roles`).
 
-```ts
-useEffect(() => {
-  if (invoiceNumberMode === 'auto') setInvoiceNumber(generateInvoiceNumber());
-}, [invoiceNumberMode, generateInvoiceNumber]);
-```
+### Auth config
 
-`generateInvoiceNumber` is a fresh closure on every `AppContext` render (no `useCallback`). Combined with Issue 1, this effect runs constantly while editing — re-computing a number, setting state, and forcing the form to re-render. On an existing invoice it can also overwrite the saved number while typing.
+- Enable Email/password (already on).
+- Call `configure_social_auth` with `providers: ["google"]`.
+- Do **not** auto-confirm emails (default).
+- Enable HIBP password protection.
 
-### Issue 3 — `InvoicesList` recomputes payment status O(N×M) per render
-**File:** `src/pages/InvoicesList.tsx` (lines 36-42 and 125-127)
+### Frontend
 
-`calculateInvoicePaymentStatus(invoice.id)` is called inside both `.filter(...)` and `.map(...)`. For every invoice it scans all payments. Multiplied by the re-render storm from Issue 1, this becomes the visible freeze on the Sales page.
+New files:
+- `src/pages/Auth.tsx` — single page with Login / Signup tabs + "Sign in with Google" button. Uses `supabase.auth.signInWithPassword`, `signUp` (with `emailRedirectTo: window.location.origin`), and `lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin })`.
+- `src/hooks/useAuth.ts` — exposes `{ user, session, role, loading, signOut }`. Sets up `onAuthStateChange` first, then `getSession`. Fetches role from `user_roles` after sign-in.
 
-## Fixes (small, surgical)
+Modified:
+- `src/App.tsx` — add `/auth` route. Wrap protected routes in an `<AuthGate>` that:
+  - If user is signed in → render children.
+  - If not signed in → render children too (local-only fallback) but show a small banner in the header: *"Working offline — sign in to sync."*
+  - Reads a `requireAuth` flag from settings; when on, redirects unauthenticated users to `/auth`. Default: off (keeps current local-only behavior).
+- `src/components/layout/AppLayout.tsx` — show user email + role badge + Sign out button when signed in; "Sign in" link otherwise.
+- `src/pages/Settings.tsx` — add "Require login" toggle and (admin-only) a small "Users & roles" panel to promote/demote users.
 
-### Fix A — Stabilize `useLocalStorage` setter
-**File:** `src/hooks/useLocalStorage.ts`
+### What does NOT change
 
-Use a ref to read the latest value inside `setValue`, and drop `storedValue` from the deps so the setter identity is stable for the component's lifetime:
+- No data migration. Existing localStorage data stays as-is. When a user signs in, the existing `useRemoteCollection` sync continues to push/pull their cloud rows. Admins additionally see other users' rows via the new override policies.
+- No changes to invoice/quotation/journal logic, voucher numbering, or the radial nav.
+- No password-reset page in this pass (can add later if needed).
 
-```ts
-const storedRef = useRef(storedValue);
-useEffect(() => { storedRef.current = storedValue; }, [storedValue]);
+## Files touched
 
-const setValue = useCallback((value) => {
-  const newValue = value instanceof Function ? value(storedRef.current) : value;
-  …
-}, [key]);
-```
+- New: `supabase` migration, `src/pages/Auth.tsx`, `src/hooks/useAuth.ts`, `src/components/AuthGate.tsx`.
+- Edited: `src/App.tsx`, `src/components/layout/AppLayout.tsx`, `src/pages/Settings.tsx`, `src/contexts/AppContext.tsx` (add `requireAuth` to settings type only).
 
-This single change makes every `setX` in `AppContext` stable, which in turn makes the `useEffect`s and provider-value memoization actually work.
+## Credit budget
 
-### Fix B — Memoize `AppContext.Provider` value and the number generators
-**File:** `src/contexts/AppContext.tsx`
-
-1. Wrap `generateInvoiceNumber`, `generateQuotationNumber`, `generatePurchaseInvoiceNumber`, `getClient`, `getSalesman`, `getInvoice`, `getQuotation`, `getProject`, `getItem`, `calculateInvoicePaymentStatus` in `useCallback` with the right deps (`[invoices]`, `[quotations]`, etc.). No logic changes.
-2. Wrap the giant object passed to `AppContext.Provider value={…}` in `useMemo` with all collections + the (now stable) callbacks as deps.
-
-After Fix A this prevents the cascading re-render of every consumer on every unrelated state change.
-
-### Fix C — Drop unstable dep in `InvoiceForm` auto-number effect
-**File:** `src/pages/InvoiceForm.tsx`
-
-Change deps to `[invoiceNumberMode]` only (the generator is still called inside but its identity no longer matters). Also guard so it never overwrites an existing invoice's number:
-
-```ts
-useEffect(() => {
-  if (invoiceNumberMode === 'auto' && !isEditing) {
-    setInvoiceNumber(generateInvoiceNumber());
-  }
-}, [invoiceNumberMode, isEditing]);
-```
-
-### Fix D — Single-pass payment totals in `InvoicesList`
-**File:** `src/pages/InvoicesList.tsx`
-
-Pull `payments` from the context, build a `Map<invoiceId, totalPaid>` once with `useMemo`, and let `getDisplayStatus` read from it. Drops the per-render scan from O(N×M) to O(N+M). No UI change.
-
-## Files touched (4 only)
-
-1. `src/hooks/useLocalStorage.ts` — stable setter via ref
-2. `src/contexts/AppContext.tsx` — `useCallback` on getters + `useMemo` on provider value
-3. `src/pages/InvoiceForm.tsx` — fix auto-number effect deps + guard
-4. `src/pages/InvoicesList.tsx` — memoized payment totals map
-
-## Expected performance impact
-
-- **Sales / Quotations / Projects pages:** ~10× faster initial render and near-instant interaction (no more re-render on unrelated state changes).
-- **Saving an invoice / voucher / payment:** instant. Today each save fires 4-6 sequential context updates, each one re-rendering every consumer; after the fix only consumers of the changed slice re-render.
-- **Editing in InvoiceForm:** typing no longer triggers the auto-number effect → no more lag / flicker on each keystroke.
-- **No UI redesign, no business-logic change, no schema change.**
-
-## What is explicitly NOT touched
-
-- No changes to journal-posting math, RLS, voucher numbering, invoice/sales sorting, or auth.
-- No refactor of `useRemoteCollection` (Fix A alone stabilizes its inputs).
-- No changes to `PaymentsReceipts.tsx`, `VoucherDashboard.tsx`, `ProjectsList.tsx`, `QuotationsList.tsx` — they get faster automatically once Fixes A + B land.
-
-Fits comfortably in 3 credits.
+≤ 3 credits: perf verification is free, auth is one focused implementation pass (1 migration + ~4 new/edited UI files).

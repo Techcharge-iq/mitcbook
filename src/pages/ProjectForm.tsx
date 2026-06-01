@@ -23,7 +23,7 @@ export default function ProjectForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { projects, addProject, updateProject, getCustomers, getProject } = useApp();
+  const { projects, addProject, updateProject, getCustomers, getProject, settings } = useApp();
 
   const isEditing = Boolean(id);
   const existingProject = isEditing ? getProject(id ?? '') : undefined;
