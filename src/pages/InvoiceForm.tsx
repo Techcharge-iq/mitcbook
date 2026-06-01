@@ -53,6 +53,7 @@ export default function InvoiceForm() {
 
   const [clientId, setClientId] = useState(existingInvoice?.clientId || sourceQuotation?.clientId || '');
   const [salesmanId, setSalesmanId] = useState<string>(existingInvoice?.salesmanId || sourceQuotation?.salesmanId || '');
+  const [invoiceDate, setInvoiceDate] = useState(existingInvoice?.invoiceDate || new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState(existingInvoice?.dueDate || defaultDueDate.toISOString().split('T')[0]);
   const [notes, setNotes] = useState(existingInvoice?.notes || sourceQuotation?.notes || '');
   const [terms, setTerms] = useState(existingInvoice?.terms || sourceQuotation?.terms || 'Payment terms: Net 30 days');
@@ -283,6 +284,7 @@ export default function InvoiceForm() {
         clientId,
         items,
         netTotal: grandTotal,
+        invoiceDate,
         dueDate,
         notes,
         terms,
@@ -324,6 +326,7 @@ export default function InvoiceForm() {
         items,
         netTotal: grandTotal,
         status: 'draft',
+        invoiceDate,
         dueDate,
         notes,
         terms,
@@ -548,6 +551,10 @@ export default function InvoiceForm() {
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Invoice Date</Label>
+              <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} className="h-9" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Due Date</Label>

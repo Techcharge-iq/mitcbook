@@ -123,6 +123,7 @@ export interface Invoice {
   items: LineItem[];
   netTotal: number;
   status: InvoiceStatus;
+  invoiceDate?: string;
   dueDate: string;
   notes: string;
   terms: string;
@@ -143,6 +144,7 @@ export interface PurchaseInvoice {
   items: LineItem[];
   netTotal: number;
   status: PurchaseInvoiceStatus;
+  invoiceDate?: string;
   dueDate: string;
   notes: string;
   terms: string;
