@@ -23,6 +23,7 @@ import {
   LogIn,
   LogOut,
 } from 'lucide-react';
+import { SyncStatusIndicator } from '@/components/SyncStatusIndicator';
 
 interface AppLayoutProps {
   children: ReactNode;
