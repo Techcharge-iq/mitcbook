@@ -1,63 +1,52 @@
 ## Goal
 
-1. Remove the "Network / Multi-user (LAN)" feature entirely. All data (projects, sales, purchases, vouchers, clients, items, payments, etc.) must live in the cloud database under the signed-in user and be reachable from any PC.
-2. Fix the blank PDF for sales / purchase / project invoices.
+Harden PDF generation so it never renders empty (re-fetch latest record by ID on click), add a visible sync status indicator, and verify all key collections round-trip through the cloud.
 
-No UI redesign. Minimal, targeted edits. 1 credit.
+## 1. Harden PDF — re-fetch by ID on click
 
----
+**File:** `src/lib/cloudSync.ts`
+- Add `cloudFetchById(collection, id)` helper using `supabase.from(table).select('*').eq('id', id).eq('user_id', uid).maybeSingle()`, returning a `fromRow`-mapped object or `null`.
 
-## Issue 1 — Remove LAN sharing, cloud-only data
+**File:** `src/lib/documentUtils.ts`
+- In `generatePDFBlob`, before rendering, if a `userId` session exists call `cloudFetchById` for the doc (`invoice` / `quotation`) and merge the fresh row over the in-memory `docData` (preserve `items` shape). Also re-fetch the `client` by `clientId` if missing or stale. If offline / not signed in, fall back to the passed `docData`.
+- Guard: if after re-fetch `items.length === 0` AND `netTotal === 0`, throw a clear error ("Invoice has no data yet — please save first") so the caller toast surfaces it instead of producing a blank PDF.
 
-### Root cause
-`useRemoteCollection` still has a LAN code path (`apiClient.ts`) and the Settings screen still exposes a "Network / Multi-user" card with `lan.mode` / `lan.serverUrl`. Dashboard also renders `LocalInstallationSetup`. The cloud sync added last turn already covers all 11 collections — so once LAN is removed, the hook becomes "localStorage + Supabase" only, which is exactly what's wanted.
+**Files:** `src/pages/InvoiceForm.tsx`, `src/pages/QuotationForm.tsx`, and add the same flow to `src/pages/PurchaseInvoiceForm.tsx` PDF button (if present; otherwise leave as-is).
+- No UI change. `handleDownloadPDF` already passes `existingInvoice`; documentUtils does the re-fetch internally so call sites stay one-line.
 
-### Changes
-- `src/hooks/useRemoteCollection.ts` — drop the two LAN `useEffect`s (initial list + 5 s polling) and the LAN branches inside `setAndPush`. Keep Supabase pull, realtime subscribe, and per-row upsert/delete. localStorage stays as the offline cache.
-- `src/pages/Settings.tsx` — delete the entire "Network / Multi-user (LAN)" card (lan state, `saveNetwork`, `testConnection`, JSX block ~lines 596-655) and the `pingServer` import.
-- `src/pages/Dashboard.tsx` — remove the `<LocalInstallationSetup />` render and its import.
-- `src/App.tsx` — remove the `setConflictHandler` import + call (LAN-only).
-- Delete files: `src/components/LocalInstallationSetup.tsx`, `src/lib/apiClient.ts`. (Leave `server/` directory and Electron native code alone — not referenced from the React app.)
-- Clean up the stale `lan.mode` / `lan.serverUrl` localStorage keys on app start (one-line cleanup in `AppContext` so existing installs don't carry orphaned settings).
+## 2. Sync status indicator
 
-### Verification
-- Sign in on PC A → create a project, sales invoice, purchase invoice, voucher → confirm row in Supabase under that `user_id`.
-- Sign in with same Google account on PC B → all data shows within ~2 s (realtime) and after reload.
-- Settings page no longer shows the Network card; Dashboard no longer shows the LAN setup card.
+**New file:** `src/components/SyncStatusIndicator.tsx`
+- Small badge rendered in `AppLayout` header (top-right, next to existing controls). Shows one of: `Synced` (green dot), `Saving…` (amber pulsing), `Offline` (gray), `Update received` (blue flash for 2s).
+- No layout redesign — single inline pill with icon + short label, hidden on very small screens (icon-only).
 
----
+**File:** `src/lib/cloudSync.ts`
+- Add a tiny pub/sub: `syncBus` with `emit('saving' | 'saved' | 'error' | 'remote-update')` and `subscribe(cb)`.
+- Emit `saving` at start of `cloudUpsert`/`cloudDelete`, `saved` on success, `error` on failure.
 
-## Issue 2 — Blank PDF (real root cause)
+**File:** `src/hooks/useRemoteCollection.ts`
+- In the realtime subscription callback, call `syncBus.emit('remote-update')` so the indicator can flash.
+- Track online/offline via `navigator.onLine` + `online`/`offline` window events inside the indicator component.
 
-### Root cause
-`generatePDFBlob` passes a full HTML document (`<!DOCTYPE><html><head><style>…</style></head><body>…</body></html>`) to `html2pdf().from(html, 'string')`. html2pdf wraps the string in an off-screen `<div>` and sets it as `innerHTML`. The HTML parser **strips** `<html>`, `<head>`, and `<body>` tags when assigned via `innerHTML`, which also drops the `<style>` block that lived inside `<head>`. Result: html2canvas captures an unstyled, zero-height fragment → blank page. (Same underlying cause as before; `.from(html, 'string')` did not actually fix it.)
+**File:** `src/components/layout/AppLayout.tsx`
+- Mount `<SyncStatusIndicator />` in the existing header bar. No other UI changes.
 
-### Fix (minimal, no layout redesign)
-In `src/lib/documentUtils.ts → generatePDFBlob`:
-1. Build only the **body markup** as a string (keep all existing layout/HTML exactly as-is — just drop the `<!DOCTYPE><html><head>…</head><body>` wrapper and the closing tags).
-2. Move the existing `<style>…</style>` block to be the **first child of the container** (styles inside a `<div>` are honored by html2canvas).
-3. Create a real off-screen `<div>` (`position: fixed; left: -10000px; top: 0; width: 800px; background: #ffffff;`), set its `innerHTML` to `style + body`, append to `document.body`, pass the **element** to `html2pdf().from(element)`, await the blob, then remove the element.
-4. Keep the existing html2pdf options (`scale: 2, useCORS: true, backgroundColor: '#ffffff'`, A4 portrait, 10 mm margins).
-5. Keep the existing debug log; remove it once verified.
+## 3. Cloud round-trip verification
 
-No changes to the visual layout, the CSS, the number formatting (3-decimal OMR), the date logic, or sales/purchase/project invoice handling.
+No code change required if checks pass. Verification steps after build:
+- Sign in on PC A, create one Project, one Sales Invoice, one Purchase Invoice, one Voucher.
+- Confirm rows appear in `projects`, `invoices`, `purchase_invoices`, `vouchers` tables (via the existing realtime push from `useRemoteCollection`).
+- Sign in on PC B with the same Google account, confirm the four records load on initial pull and that the indicator flashes "Update received" when PC A makes a change.
 
-### Verification
-- Create a sales invoice → click PDF → file opens with full header, party block, items table, totals (3-decimal), amount-in-words.
-- Same for purchase invoice and project invoice.
-- Console shows `[PDF] generating … items: N netTotal: …`.
+If any collection is missing, the fix is limited to adding/correcting its entry in `COLLECTIONS` inside `src/lib/cloudSync.ts` — all four are already mapped, so no schema change is expected.
 
----
+## Out of scope
 
-## Files touched
+- PDF layout redesign
+- New tables / migrations
+- LAN/server reinstatement
+- Auth changes
 
-- edit: `src/hooks/useRemoteCollection.ts`
-- edit: `src/pages/Settings.tsx`
-- edit: `src/pages/Dashboard.tsx`
-- edit: `src/App.tsx`
-- edit: `src/contexts/AppContext.tsx` (one-time `lan.*` key cleanup)
-- edit: `src/lib/documentUtils.ts` (PDF container fix)
-- delete: `src/components/LocalInstallationSetup.tsx`
-- delete: `src/lib/apiClient.ts`
+## Credit budget
 
-No DB migration, no schema change, no UI redesign.
+Single implementation pass, ~5 file touches + 1 new component. One credit.
