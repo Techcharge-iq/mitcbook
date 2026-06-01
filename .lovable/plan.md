@@ -1,42 +1,46 @@
-## Goal
-Display all monetary amounts with 3 decimal places (e.g. `1.000`) to match Omani Rial conventions. Percentages stay at 2 decimals.
+## Fix 1: Blank PDF
 
-## Approach
-Introduce a single shared formatter and use it across the app, instead of hand-tweaking ~50 call sites with `toLocaleString('en-IN', { minimumFractionDigits: 2 })` and `toFixed(2)`.
+**Root cause:** In `src/lib/documentUtils.ts` (`generatePDFBlob`), the hidden container is created with `position: fixed; left: -10000px` but no explicit `width`. html2canvas measures it as 0-width and renders an empty canvas, so html2pdf outputs a blank page. The HTML also has a malformed `.parties` wrapper (missing opening `<div class="parties">`, with an orphan `</div>`), which doesn't help.
 
-### New file
-- `src/lib/format.ts`
-  - `MONEY_DECIMALS = 3`
-  - `formatMoney(n: number)` → `n.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })`
-  - `formatMoneyWithSymbol(n, symbol)` helper
-  - `toMoneyFixed(n)` → `n.toFixed(3)` (for CSV exports / raw strings)
+**Fix (minimal, in `documentUtils.ts` only):**
+- Give the off-screen container an explicit width: `container.style.width = '800px'` (matches `body { max-width: 800px }`).
+- Fix the malformed parties block — add the missing `<div class="parties">` wrapper around `Bill To` so the existing layout closes cleanly.
+- No layout/style redesign.
 
-### Edits (replace inline 2-decimal money formatting with the helpers)
-Currency/amount sites only — percentages (`%`) keep `toFixed(2)`:
-- `src/lib/documentUtils.ts` (PDF/print totals, lines 307, 317, 321, 325, 329)
-- `src/pages/Dashboard.tsx` (formatCurrency: change maximumFractionDigits to 3 and add minimumFractionDigits 3)
-- `src/pages/InvoiceForm.tsx` (line totals, subtotal, VAT, grand total, project summary money fields — not the `%` ones)
-- `src/pages/InvoicesList.tsx` (any money formatting present)
-- `src/pages/QuotationForm.tsx` + `QuotationsList.tsx` (same patterns)
-- `src/pages/PurchaseInvoiceForm.tsx` + `PurchaseInvoicesList.tsx`
-- `src/pages/PaymentForm.tsx` + `PaymentsReceipts.tsx`
-- `src/pages/ProjectsList.tsx` (money columns; leave `%` lines)
-- `src/pages/ProjectForm.tsx` (totalActivityValue; leave `%`; also change activity value rounding from `toFixed(2)` → `toFixed(3)`)
-- `src/pages/AccountStatement.tsx` (debit/credit/running balance display + CSV export)
-- `src/pages/ClientStatement.tsx`
-- `src/pages/ChartOfAccounts.tsx` (if it shows balances)
-- `src/pages/VoucherDashboard.tsx`, `ExpensesVoucher.tsx`, `ContraVoucher.tsx`, `JournalVoucher.tsx`, `LoanGivenVoucher.tsx`, `LoanReceivedVoucher.tsx` (amount displays)
-- `src/pages/reports/VatReturn.tsx`, `TrialBalance.tsx`, `BalanceSheet.tsx`, `ProfitAndLoss.tsx`, `AgingReport.tsx`, `ItemReport.tsx`, `SalesBySalesman.tsx` (amount cells + CSV exports)
-- `src/pages/ItemsList.tsx` (price/cost columns)
-- `src/components/ItemPicker.tsx` (price display, if formatted)
+This fix applies to Sales, Purchase, and Project invoices since they all go through the same `generatePDF` helper.
 
-### Out of scope
-- Stored data and calculations stay as JS numbers — only display formatting changes.
-- Percentages remain at 2 decimals.
-- No schema or settings changes; this is global to match OMR convention.
-- No other features touched.
+## Fix 2: Invoice Date field on Sales & Purchase invoices
 
-### Verification
-Open Dashboard, an Invoice, a Quotation, and Account Statement in preview; confirm amounts render like `1.000` / `1,234.500`, percentages still show `12.50%`.
+Add a dedicated `invoiceDate` field (separate from `createdAt`, which is the system timestamp).
+
+**Database** (one migration):
+- `ALTER TABLE public.invoices ADD COLUMN invoice_date date;`
+- `ALTER TABLE public.purchase_invoices ADD COLUMN invoice_date date;`
+- Backfill existing rows: `UPDATE … SET invoice_date = created_at::date WHERE invoice_date IS NULL;`
+
+**Types** (`src/types/index.ts`):
+- Add `invoiceDate: string` to `Invoice` and `PurchaseInvoice`.
+
+**AppContext local SQLite persistence** (`src/contexts/AppContext.tsx`):
+- Add `invoice_date` to the two `INSERT OR REPLACE` statements for `invoices` and `purchase_invoices`, plus the matching row-load mappers (`invoiceDate: i.invoice_date ?? i.created_at`).
+
+**Forms:**
+- `src/pages/InvoiceForm.tsx`: add `const [invoiceDate, setInvoiceDate] = useState(existingInvoice?.invoiceDate || new Date().toISOString().split('T')[0])`, render a `<Input type="date">` next to the existing Due Date input, include `invoiceDate` in both the update and create payloads.
+- `src/pages/PurchaseInvoiceForm.tsx`: same change, mirroring the existing dueDate pattern.
+
+**PDF** (`src/lib/documentUtils.ts`):
+- Change the "Date:" line in the header to prefer `docData.invoiceDate` (fall back to `createdAt` so legacy records still render).
+
+**Reports / lists:** No schema-breaking change — `invoiceDate` falls back to `createdAt`, so existing list columns and reports keep working without edits. Only the PDF and the two forms display the new field.
+
+## Out of scope (unchanged)
+- No changes to quotations, payments, journal posting, accounting logic, RLS policies, or list/report files.
+- No PDF layout redesign.
+
+## Verification
+1. Open an existing Sales Invoice → click PDF → confirm it renders with header, items, totals (not blank).
+2. Same for a Purchase Invoice and a Project Invoice.
+3. Create a new Sales Invoice with Invoice Date = yesterday → save → reopen → date persists. Repeat for Purchase Invoice.
+4. PDF shows the selected Invoice Date.
 
 Estimated: 1 credit.

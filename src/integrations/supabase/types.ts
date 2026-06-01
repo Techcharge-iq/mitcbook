@@ -235,6 +235,7 @@ export type Database = {
           discount_value: number | null
           due_date: string | null
           id: string
+          invoice_date: string | null
           invoice_type: string | null
           items: Json
           lpo_number: string | null
@@ -265,6 +266,7 @@ export type Database = {
           discount_value?: number | null
           due_date?: string | null
           id: string
+          invoice_date?: string | null
           invoice_type?: string | null
           items?: Json
           lpo_number?: string | null
@@ -295,6 +297,7 @@ export type Database = {
           discount_value?: number | null
           due_date?: string | null
           id?: string
+          invoice_date?: string | null
           invoice_type?: string | null
           items?: Json
           lpo_number?: string | null
@@ -554,6 +557,7 @@ export type Database = {
           created_at: string
           due_date: string | null
           id: string
+          invoice_date: string | null
           items: Json
           net_total: number
           notes: string | null
@@ -569,6 +573,7 @@ export type Database = {
           created_at?: string
           due_date?: string | null
           id: string
+          invoice_date?: string | null
           items?: Json
           net_total?: number
           notes?: string | null
@@ -584,6 +589,7 @@ export type Database = {
           created_at?: string
           due_date?: string | null
           id?: string
+          invoice_date?: string | null
           items?: Json
           net_total?: number
           notes?: string | null
