@@ -1,61 +1,63 @@
-# Two-issue fix plan
+## Goal
 
-## Root cause 1 — Blank PDF
+1. Remove the "Network / Multi-user (LAN)" feature entirely. All data (projects, sales, purchases, vouchers, clients, items, payments, etc.) must live in the cloud database under the signed-in user and be reachable from any PC.
+2. Fix the blank PDF for sales / purchase / project invoices.
 
-`generatePDFBlob` in `src/lib/documentUtils.ts` builds a full HTML document (`<!DOCTYPE html><html><head><style>…</style></head><body>…</body></html>`) and assigns it to `container.innerHTML` of a `<div>`. The HTML parser **strips `<!DOCTYPE>`, `<html>`, `<head>`, and `<body>`** when assigning to a div's innerHTML. The `<style>` block survives but every selector is scoped to `body`/`html`/global tags that no longer exist as ancestors, and the container has no document-level layout. html2pdf.js then captures an off-screen `position: fixed` div whose computed layout collapses, producing a blank page.
+No UI redesign. Minimal, targeted edits. 1 credit.
 
-The previous attempt added `width: 800px` and a white background, but the underlying problem is the wrapper: html2pdf.js needs to own the document, not us.
+---
 
-**Fix:** Pass the HTML as a string source to html2pdf.js. It renders the markup inside its own iframe where `<html>`, `<head>`, `<style>`, and `<body>` are honored.
+## Issue 1 — Remove LAN sharing, cloud-only data
 
-```ts
-const worker = html2pdf()
-  .set({ margin: [10,10,10,10], filename, image: { type: 'jpeg', quality: 0.98 },
-         html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } })
-  .from(html, 'string')
-  .toPdf();
-return await worker.outputPdf('blob');
-```
+### Root cause
+`useRemoteCollection` still has a LAN code path (`apiClient.ts`) and the Settings screen still exposes a "Network / Multi-user" card with `lan.mode` / `lan.serverUrl`. Dashboard also renders `LocalInstallationSetup`. The cloud sync added last turn already covers all 11 collections — so once LAN is removed, the hook becomes "localStorage + Supabase" only, which is exactly what's wanted.
 
-Remove the off-screen container code entirely. Add one `console.log` showing items count + netTotal during generation; remove once confirmed.
+### Changes
+- `src/hooks/useRemoteCollection.ts` — drop the two LAN `useEffect`s (initial list + 5 s polling) and the LAN branches inside `setAndPush`. Keep Supabase pull, realtime subscribe, and per-row upsert/delete. localStorage stays as the offline cache.
+- `src/pages/Settings.tsx` — delete the entire "Network / Multi-user (LAN)" card (lan state, `saveNetwork`, `testConnection`, JSX block ~lines 596-655) and the `pingServer` import.
+- `src/pages/Dashboard.tsx` — remove the `<LocalInstallationSetup />` render and its import.
+- `src/App.tsx` — remove the `setConflictHandler` import + call (LAN-only).
+- Delete files: `src/components/LocalInstallationSetup.tsx`, `src/lib/apiClient.ts`. (Leave `server/` directory and Electron native code alone — not referenced from the React app.)
+- Clean up the stale `lan.mode` / `lan.serverUrl` localStorage keys on app start (one-line cleanup in `AppContext` so existing installs don't carry orphaned settings).
 
-## Root cause 2 — Data not available on another PC
+### Verification
+- Sign in on PC A → create a project, sales invoice, purchase invoice, voucher → confirm row in Supabase under that `user_id`.
+- Sign in with same Google account on PC B → all data shows within ~2 s (realtime) and after reload.
+- Settings page no longer shows the Network card; Dashboard no longer shows the LAN setup card.
 
-`src/contexts/AppContext.tsx` wires every collection (clients, quotations, invoices, projects, purchase_invoices, payments, vouchers, items, salesmen, journal_entries, accounts) through `useRemoteCollection`. That hook **only syncs to a self-hosted LAN Express server** (`src/lib/apiClient.ts`) and only when `localStorage.lan.mode === 'client'`. In the default (standalone) mode it falls through to `useLocalStorage` — so data lives only in that browser. Nothing ever reaches Supabase, even though the tables, RLS, and `user_id` defaults are already in place.
+---
 
-Settings (`business_settings`) and audit log are pure localStorage too.
+## Issue 2 — Blank PDF (real root cause)
 
-**Fix:** Add Supabase as a sync backend inside `useRemoteCollection`, in addition to the existing LAN path:
+### Root cause
+`generatePDFBlob` passes a full HTML document (`<!DOCTYPE><html><head><style>…</style></head><body>…</body></html>`) to `html2pdf().from(html, 'string')`. html2pdf wraps the string in an off-screen `<div>` and sets it as `innerHTML`. The HTML parser **strips** `<html>`, `<head>`, and `<body>` tags when assigned via `innerHTML`, which also drops the `<style>` block that lived inside `<head>`. Result: html2canvas captures an unstyled, zero-height fragment → blank page. (Same underlying cause as before; `.from(html, 'string')` did not actually fix it.)
 
-- On mount, if there is a Supabase session (`supabase.auth.getSession()`), `select * from <table> where user_id = auth.uid()` and merge into localStorage state (cloud wins on conflict by `updated_at` when present, else replaces).
-- On every local mutation, upsert the changed rows and delete removed rows via the Supabase client. Use the column-name map below since DB columns are snake_case and the app uses camelCase.
-- Subscribe to `postgres_changes` on each table filtered by `user_id=eq.<uid>` to receive live updates from other devices.
-- LocalStorage stays as the source of truth for offline use; standalone-mode users without a login keep working exactly as today.
+### Fix (minimal, no layout redesign)
+In `src/lib/documentUtils.ts → generatePDFBlob`:
+1. Build only the **body markup** as a string (keep all existing layout/HTML exactly as-is — just drop the `<!DOCTYPE><html><head>…</head><body>` wrapper and the closing tags).
+2. Move the existing `<style>…</style>` block to be the **first child of the container** (styles inside a `<div>` are honored by html2canvas).
+3. Create a real off-screen `<div>` (`position: fixed; left: -10000px; top: 0; width: 800px; background: #ffffff;`), set its `innerHTML` to `style + body`, append to `document.body`, pass the **element** to `html2pdf().from(element)`, await the blob, then remove the element.
+4. Keep the existing html2pdf options (`scale: 2, useCORS: true, backgroundColor: '#ffffff'`, A4 portrait, 10 mm margins).
+5. Keep the existing debug log; remove it once verified.
 
-Collection → table mapping (all exist already):
-`clients→clients`, `quotations→quotations`, `invoices→invoices`, `projects→projects`, `purchaseInvoices→purchase_invoices`, `payments→payments`, `accounts→accounts`, `journalEntries→journal_entries`, `vouchers→vouchers`, `items→items`, `salesmen→salesmen`.
+No changes to the visual layout, the CSS, the number formatting (3-decimal OMR), the date logic, or sales/purchase/project invoice handling.
 
-For `settings` (currently pure localStorage) add a small dedicated effect in `AppContext` that loads/saves the single `business_settings` row for the user. For `auditLog` we leave it local (it is large, per-device, and not user-critical across devices) — call this out so it is an explicit choice.
+### Verification
+- Create a sales invoice → click PDF → file opens with full header, party block, items table, totals (3-decimal), amount-in-words.
+- Same for purchase invoice and project invoice.
+- Console shows `[PDF] generating … items: N netTotal: …`.
 
-A tiny field-mapper module (`src/lib/cloudSync.ts`) converts each entity between camelCase ↔ snake_case for the columns shown in `<supabase-tables>`. No schema changes needed.
+---
 
-## Files changed
+## Files touched
 
-- `src/lib/documentUtils.ts` — switch to `.from(html, 'string')`, drop the off-screen container, add temporary debug log.
-- `src/lib/cloudSync.ts` (new) — field mappers + helpers `loadAll`, `upsertRow`, `deleteRow`, `subscribe` per collection.
-- `src/hooks/useRemoteCollection.ts` — add Supabase pull/push/realtime alongside the existing LAN code path; both can run; localStorage remains canonical.
-- `src/contexts/AppContext.tsx` — load/save `business_settings` from Supabase when logged in.
+- edit: `src/hooks/useRemoteCollection.ts`
+- edit: `src/pages/Settings.tsx`
+- edit: `src/pages/Dashboard.tsx`
+- edit: `src/App.tsx`
+- edit: `src/contexts/AppContext.tsx` (one-time `lan.*` key cleanup)
+- edit: `src/lib/documentUtils.ts` (PDF container fix)
+- delete: `src/components/LocalInstallationSetup.tsx`
+- delete: `src/lib/apiClient.ts`
 
-## Verification
-
-1. Create a sales invoice and a purchase invoice → click PDF → confirm header, items table, totals, amount-in-words, and notes all render. Repeat for a project invoice.
-2. Console log shows the populated items array and netTotal at generation time.
-3. Sign in on browser A, create a client + invoice. Sign in on browser B with the same Google account → both records appear within ~2s (realtime) and after a hard reload.
-4. Toggle offline → mutations still write to localStorage and replay to Supabase on reconnect (existing localStorage path is untouched).
-
-## Out of scope / explicit non-goals
-
-- No UI changes, no PDF layout changes.
-- `audit_log` stays local-only by design; flag for follow-up if cross-device history is wanted.
-- No new tables, RLS, or migrations — schema already supports this.
+No DB migration, no schema change, no UI redesign.
