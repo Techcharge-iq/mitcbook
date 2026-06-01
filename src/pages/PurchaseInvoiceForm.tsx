@@ -155,6 +155,7 @@ export default function PurchaseInvoiceForm() {
         items,
         netTotal: grandTotal,
         status: 'draft',
+        invoiceDate,
         dueDate,
         notes,
         terms,
