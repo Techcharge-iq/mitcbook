@@ -109,6 +109,28 @@ export async function shareViaWhatsApp({ type, document: docData, client, settin
 }
 // Helper function to generate PDF as blob
 export async function generatePDFBlob({ type, document: docData, client, settings }: DocumentData) {
+  // Re-fetch the latest record from the cloud so we never render stale/empty data.
+  try {
+    const uid = await getUserId();
+    if (uid && docData?.id) {
+      const collection = type === 'invoice' ? 'invoices' : 'quotations';
+      const fresh = await cloudFetchById<any>(collection, docData.id);
+      if (fresh) {
+        docData = { ...docData, ...fresh } as any;
+      }
+      if ((!client || client.id !== (docData as any).clientId) && (docData as any).clientId) {
+        const freshClient = await cloudFetchById<Client>('clients', (docData as any).clientId);
+        if (freshClient) client = freshClient;
+      }
+    }
+  } catch (e) {
+    console.warn('[PDF] re-fetch failed, using in-memory data:', e);
+  }
+
+  if ((!docData?.items || docData.items.length === 0) && (!docData?.netTotal || docData.netTotal === 0)) {
+    throw new Error('This document has no data yet. Please save it first, then download the PDF.');
+  }
+
   const currencySymbol = currencySymbols[settings.currency];
   const isInvoice = type === 'invoice';
   const invoice = isInvoice ? (docData as Invoice) : null;
