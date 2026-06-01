@@ -42,6 +42,7 @@ const ProfitAndLoss = lazy(() => import("./pages/reports/ProfitAndLoss"));
 const BalanceSheet = lazy(() => import("./pages/reports/BalanceSheet"));
 const TrialBalance = lazy(() => import("./pages/reports/TrialBalance"));
 const AgingReport = lazy(() => import("./pages/reports/AgingReport"));
+const Auth = lazy(() => import("./pages/Auth"));
 
 const queryClient = new QueryClient();
 
@@ -126,6 +127,7 @@ const App = () => (
                     <Route path="/reports/items" element={<ErrorBoundary inline><ItemReport /></ErrorBoundary>} />
                     <Route path="/reports/vat" element={<ErrorBoundary inline><VatReturn /></ErrorBoundary>} />
                     <Route path="/settings" element={<ErrorBoundary inline><Settings /></ErrorBoundary>} />
+                    <Route path="/auth" element={<ErrorBoundary inline><Auth /></ErrorBoundary>} />
                     <Route path="*" element={<NotFound />} />
                   </Routes>
                 </Suspense>
