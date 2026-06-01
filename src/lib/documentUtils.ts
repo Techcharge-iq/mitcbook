@@ -367,31 +367,20 @@ export async function generatePDFBlob({ type, document: docData, client, setting
     </html>
   `;
 
-  const container = window.document.createElement('div');
-  container.innerHTML = html;
-  container.style.position = 'fixed';
-  container.style.left = '-10000px';
-  container.style.top = '0';
-  container.style.width = '800px';
-  container.style.background = '#ffffff';
-  window.document.body.appendChild(container);
+  console.log('[PDF] generating', type, docData.number, 'items:', docData.items?.length ?? 0, 'netTotal:', docData.netTotal);
 
-  try {
-    const html2pdfModule = await import('html2pdf.js');
-    const html2pdf = (html2pdfModule.default ?? html2pdfModule) as any;
-    const worker = html2pdf()
-      .set({
-        margin: [10, 10, 10, 10],
-        filename: `${type}-${docData.number}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      })
-      .from(container)
-      .toPdf();
+  const html2pdfModule = await import('html2pdf.js');
+  const html2pdf = (html2pdfModule.default ?? html2pdfModule) as any;
+  const worker = html2pdf()
+    .set({
+      margin: [10, 10, 10, 10],
+      filename: `${type}-${docData.number}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    })
+    .from(html, 'string')
+    .toPdf();
 
-    return await worker.outputPdf('blob');
-  } finally {
-    container.remove();
-  }
+  return await worker.outputPdf('blob');
 }
