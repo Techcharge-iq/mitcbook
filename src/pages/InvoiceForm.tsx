@@ -53,6 +53,7 @@ export default function InvoiceForm() {
 
   const [clientId, setClientId] = useState(existingInvoice?.clientId || sourceQuotation?.clientId || '');
   const [salesmanId, setSalesmanId] = useState<string>(existingInvoice?.salesmanId || sourceQuotation?.salesmanId || '');
+  const [invoiceDate, setInvoiceDate] = useState(existingInvoice?.invoiceDate || new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState(existingInvoice?.dueDate || defaultDueDate.toISOString().split('T')[0]);
   const [notes, setNotes] = useState(existingInvoice?.notes || sourceQuotation?.notes || '');
   const [terms, setTerms] = useState(existingInvoice?.terms || sourceQuotation?.terms || 'Payment terms: Net 30 days');
