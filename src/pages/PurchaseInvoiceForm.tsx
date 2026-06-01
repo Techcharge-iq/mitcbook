@@ -133,6 +133,7 @@ export default function PurchaseInvoiceForm() {
       vendorId,
       items,
       netTotal: grandTotal,
+      invoiceDate,
       dueDate,
       notes,
       terms,
