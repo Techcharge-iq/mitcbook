@@ -19,7 +19,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import LocalInstallationSetup from '@/components/LocalInstallationSetup';
+
 
 function addDays(date: Date, days: number) {
   const copy = new Date(date);
@@ -155,7 +155,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <LocalInstallationSetup />
+
 
       <div className="rounded-[2rem] border border-border/70 bg-card/90 p-6 shadow-2xl shadow-black/5 backdrop-blur-xl">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">

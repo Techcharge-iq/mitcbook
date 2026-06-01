@@ -112,147 +112,50 @@ export async function generatePDFBlob({ type, document: docData, client, setting
   const isInvoice = type === 'invoice';
   const invoice = isInvoice ? (docData as Invoice) : null;
 
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>${docData.number}</title>
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          padding: 40px;
-          color: #1a1a2e;
-          max-width: 800px;
-          margin: 0 auto;
-        }
-        .header { 
-          display: flex; 
-          justify-content: space-between; 
-          align-items: flex-start;
-          margin-bottom: 40px;
-          padding-bottom: 20px;
-          border-bottom: 2px solid #e5e7eb;
-        }
-        .logo-section { display: flex; align-items: center; gap: 12px; }
-        .logo { width: 60px; height: 60px; object-fit: contain; }
-        .business-name { font-size: 24px; font-weight: bold; color: #3b82f6; }
-        .doc-info { text-align: right; }
-        .doc-type { 
-          font-size: 28px; 
-          font-weight: bold; 
-          text-transform: uppercase;
-          color: ${isInvoice ? '#10b981' : '#3b82f6'};
-        }
-        .doc-number { font-size: 14px; color: #6b7280; margin-top: 4px; }
-        .doc-date { font-size: 14px; color: #6b7280; }
-        
-        .parties { 
-          display: grid; 
-          grid-template-columns: 1fr 1fr; 
-          gap: 40px;
-          margin-bottom: 40px;
-        }
-        .party-section h3 { 
-          font-size: 12px; 
-          text-transform: uppercase; 
-          color: #6b7280;
-          margin-bottom: 8px;
-          letter-spacing: 0.5px;
-        }
-        .party-name { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
-        .party-details { font-size: 14px; color: #4b5563; line-height: 1.6; }
-        
-        table { 
-          width: 100%; 
-          border-collapse: collapse; 
-          margin-bottom: 30px;
-        }
-        th { 
-          background: #f3f4f6; 
-          padding: 12px 16px; 
-          text-align: left;
-          font-size: 12px;
-          text-transform: uppercase;
-          color: #6b7280;
-          letter-spacing: 0.5px;
-        }
-        th:last-child { text-align: right; }
-        td { 
-          padding: 16px; 
-          border-bottom: 1px solid #e5e7eb;
-          font-size: 14px;
-        }
-        td:last-child { text-align: right; }
-        .item-name { font-weight: 500; }
-        .item-desc { font-size: 13px; color: #6b7280; margin-top: 2px; }
-        
-        .totals { 
-          display: flex; 
-          justify-content: flex-end;
-          margin-bottom: 40px;
-        }
-        .totals-box { 
-          width: 280px;
-          background: #f8fafc;
-          border-radius: 8px;
-          padding: 20px;
-        }
-        .total-row { 
-          display: flex; 
-          justify-content: space-between;
-          padding: 8px 0;
-        }
-        .total-row.grand { 
-          font-size: 20px; 
-          font-weight: bold;
-          border-top: 2px solid #e5e7eb;
-          margin-top: 8px;
-          padding-top: 16px;
-          color: #1a1a2e;
-        }
-        
-        .amount-in-words {
-          margin-bottom: 30px;
-          padding: 15px;
-          background: #fafbfc;
-          border-radius: 8px;
-        }
-        .amount-in-words p {
-          font-size: 13px;
-          color: #4b5563;
-          line-height: 1.6;
-        }
-        
-        .notes-section { 
-          background: #f8fafc; 
-          padding: 20px;
-          border-radius: 8px;
-          margin-bottom: 20px;
-        }
-        .notes-section h4 { 
-          font-size: 12px; 
-          text-transform: uppercase;
-          color: #6b7280;
-          margin-bottom: 8px;
-        }
-        .notes-section p { font-size: 14px; color: #4b5563; line-height: 1.6; }
-        
-        .footer {
-          text-align: center;
-          padding-top: 20px;
-          border-top: 1px solid #e5e7eb;
-          font-size: 12px;
-          color: #9ca3af;
-        }
-        
-        @media print {
-          body { padding: 20px; }
-          .no-print { display: none; }
-        }
-      </style>
-    </head>
-    <body>
+  const styleHtml = `
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      .pdf-root {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        padding: 40px;
+        color: #1a1a2e;
+        width: 800px;
+        background: #ffffff;
+      }
+      .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 2px solid #e5e7eb; }
+      .logo-section { display: flex; align-items: center; gap: 12px; }
+      .logo { width: 60px; height: 60px; object-fit: contain; }
+      .business-name { font-size: 24px; font-weight: bold; color: #3b82f6; }
+      .doc-info { text-align: right; }
+      .doc-type { font-size: 28px; font-weight: bold; text-transform: uppercase; color: ${isInvoice ? '#10b981' : '#3b82f6'}; }
+      .doc-number { font-size: 14px; color: #6b7280; margin-top: 4px; }
+      .doc-date { font-size: 14px; color: #6b7280; }
+      .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-bottom: 40px; }
+      .party-section h3 { font-size: 12px; text-transform: uppercase; color: #6b7280; margin-bottom: 8px; letter-spacing: 0.5px; }
+      .party-name { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+      .party-details { font-size: 14px; color: #4b5563; line-height: 1.6; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+      th { background: #f3f4f6; padding: 12px 16px; text-align: left; font-size: 12px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.5px; }
+      th:last-child { text-align: right; }
+      td { padding: 16px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
+      td:last-child { text-align: right; }
+      .item-name { font-weight: 500; }
+      .item-desc { font-size: 13px; color: #6b7280; margin-top: 2px; }
+      .totals { display: flex; justify-content: flex-end; margin-bottom: 40px; }
+      .totals-box { width: 280px; background: #f8fafc; border-radius: 8px; padding: 20px; }
+      .total-row { display: flex; justify-content: space-between; padding: 8px 0; }
+      .total-row.grand { font-size: 20px; font-weight: bold; border-top: 2px solid #e5e7eb; margin-top: 8px; padding-top: 16px; color: #1a1a2e; }
+      .amount-in-words { margin-bottom: 30px; padding: 15px; background: #fafbfc; border-radius: 8px; }
+      .amount-in-words p { font-size: 13px; color: #4b5563; line-height: 1.6; }
+      .notes-section { background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+      .notes-section h4 { font-size: 12px; text-transform: uppercase; color: #6b7280; margin-bottom: 8px; }
+      .notes-section p { font-size: 14px; color: #4b5563; line-height: 1.6; }
+      .footer { text-align: center; padding-top: 20px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #9ca3af; }
+    </style>
+  `;
+
+  const bodyHtml = `
+    <div class="pdf-root">
       <div class="header">
         <div class="logo-section">
           ${settings.logo ? `<img src="${settings.logo}" class="logo" alt="Logo">` : ''}
@@ -284,7 +187,7 @@ export async function generatePDFBlob({ type, document: docData, client, setting
           </div>
         </div>
       </div>
-      
+
       <table>
         <thead>
           <tr>
@@ -310,7 +213,7 @@ export async function generatePDFBlob({ type, document: docData, client, setting
           `).join('')}
         </tbody>
       </table>
-      
+
       <div class="totals">
         <div class="totals-box">
           <div class="total-row">
@@ -331,11 +234,11 @@ export async function generatePDFBlob({ type, document: docData, client, setting
           </div>
         </div>
       </div>
-      
+
       <div class="amount-in-words">
         <p><strong>Amount in Words:</strong> ${numberToWords(docData.netTotal, settings.currency)}</p>
       </div>
-      
+
       ${(settings.bankName || settings.bankAccountNumber) ? `
         <div class="notes-section">
           <h4>Account Details</h4>
@@ -352,35 +255,44 @@ export async function generatePDFBlob({ type, document: docData, client, setting
           <p>${docData.notes}</p>
         </div>
       ` : ''}
-      
+
       ${docData.terms ? `
         <div class="notes-section">
           <h4>Terms & Conditions</h4>
           <p>${docData.terms}</p>
         </div>
       ` : ''}
-      
-      <div class="footer">
-        Thank you for your business!
-      </div>
-    </body>
-    </html>
+
+      <div class="footer">Thank you for your business!</div>
+    </div>
   `;
 
   console.log('[PDF] generating', type, docData.number, 'items:', docData.items?.length ?? 0, 'netTotal:', docData.netTotal);
 
-  const html2pdfModule = await import('html2pdf.js');
-  const html2pdf = (html2pdfModule.default ?? html2pdfModule) as any;
-  const worker = html2pdf()
-    .set({
-      margin: [10, 10, 10, 10],
-      filename: `${type}-${docData.number}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-    })
-    .from(html, 'string')
-    .toPdf();
+  const container = window.document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.left = '-10000px';
+  container.style.top = '0';
+  container.style.background = '#ffffff';
+  container.innerHTML = styleHtml + bodyHtml;
+  window.document.body.appendChild(container);
 
-  return await worker.outputPdf('blob');
+  try {
+    const html2pdfModule = await import('html2pdf.js');
+    const html2pdf = (html2pdfModule.default ?? html2pdfModule) as any;
+    const worker = html2pdf()
+      .set({
+        margin: [10, 10, 10, 10],
+        filename: `${type}-${docData.number}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      })
+      .from(container)
+      .toPdf();
+
+    return await worker.outputPdf('blob');
+  } finally {
+    container.remove();
+  }
 }

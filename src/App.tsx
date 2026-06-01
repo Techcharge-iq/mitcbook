@@ -9,7 +9,7 @@ import { AppProvider } from "@/contexts/AppContext";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useToast } from "@/hooks/use-toast";
-import { setConflictHandler } from "@/lib/apiClient";
+
 
 import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
@@ -63,18 +63,6 @@ function StorageErrorListener() {
     return () => window.removeEventListener("bookit:storage-error", handler);
   }, [toast]);
 
-  useEffect(() => {
-    setConflictHandler((collection) => {
-      toast({
-        title: "Record changed by another user",
-        description: `Your edit on ${collection.replace(
-          "/api/records/",
-          ""
-        )} clashed with a newer change.`,
-        variant: "destructive",
-      });
-    });
-  }, [toast]);
 
   return null;
 }

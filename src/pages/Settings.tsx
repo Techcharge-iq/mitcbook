@@ -19,7 +19,7 @@ import type { BusinessSettings } from '@/types';
 import { Building2, Save, Upload, Trash2, Globe, Mail, Phone, MapPin, FileText, RefreshCw, Info, Pencil, Check, X, Plus } from 'lucide-react';
 import BackupRestore from '@/components/BackupRestore';
 import { useState, useEffect } from 'react';
-import { pingServer } from '@/lib/apiClient';
+
 
 export default function Settings() {
   const {
