@@ -372,6 +372,8 @@ export async function generatePDFBlob({ type, document: docData, client, setting
   container.style.position = 'fixed';
   container.style.left = '-10000px';
   container.style.top = '0';
+  container.style.width = '800px';
+  container.style.background = '#ffffff';
   window.document.body.appendChild(container);
 
   try {
