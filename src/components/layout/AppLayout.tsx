@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useTheme } from 'next-themes';
+import { useAuth } from '@/hooks/useAuth';
 import {
   LayoutDashboard,
   FileText,
@@ -19,6 +20,8 @@ import {
   Moon,
   ArrowRight,
   Building2,
+  LogIn,
+  LogOut,
 } from 'lucide-react';
 
 interface AppLayoutProps {
