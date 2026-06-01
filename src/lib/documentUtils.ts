@@ -269,10 +269,11 @@ export async function generatePDFBlob({ type, document: docData, client, setting
         <div class="doc-info">
           <div class="doc-type">${type}</div>
           <div class="doc-number">${docData.number}</div>
-          <div class="doc-date">Date: ${new Date(docData.createdAt).toLocaleDateString('en-IN')}</div>
-          ${isInvoice && invoice ? `<div class="doc-date">Due: ${new Date(invoice.dueDate).toLocaleDateString('en-IN')}</div>` : ''}
+          <div class="doc-date">Date: ${new Date((isInvoice && invoice?.invoiceDate) ? invoice.invoiceDate : (docData as any).invoiceDate || docData.createdAt).toLocaleDateString('en-IN')}</div>
+          ${isInvoice && invoice?.dueDate ? `<div class="doc-date">Due: ${new Date(invoice.dueDate).toLocaleDateString('en-IN')}</div>` : ''}
         </div>
       </div>
+      <div class="parties">
         <div class="party-section">
           <h3>Bill To</h3>
           <div class="party-name">${client?.name || 'Client'}</div>
