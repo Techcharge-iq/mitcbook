@@ -41,45 +41,15 @@ export default function Settings() {
   const [currentVersion, setCurrentVersion] = useState('');
   const [checking, setChecking] = useState(false);
 
-  // LAN multi-user
-  const [lanMode, setLanMode] = useState<'standalone' | 'client'>(() =>
-    (typeof window !== 'undefined' && (localStorage.getItem('lan.mode') as any)) || 'standalone'
-  );
-  const [lanUrl, setLanUrl] = useState<string>(() =>
-    (typeof window !== 'undefined' && localStorage.getItem('lan.serverUrl')) || ''
-  );
-  const [lanTesting, setLanTesting] = useState(false);
-  const [lanStatus, setLanStatus] = useState<'idle' | 'ok' | 'fail'>('idle');
+  // Clean up legacy LAN-mode keys from older builds
+  useEffect(() => {
+    try {
+      localStorage.removeItem('lan.mode');
+      localStorage.removeItem('lan.serverUrl');
+    } catch { /* ignore */ }
+  }, []);
 
-  const saveNetwork = async () => {
-    if (lanMode === 'client') {
-      if (!lanUrl.trim()) {
-        toast({ title: 'Server URL required', description: 'Please enter the LAN server URL.', variant: 'destructive' });
-        return;
-      }
-      const ping = await pingServer(lanUrl);
-      if (!ping.ok) {
-        toast({ title: 'Cannot reach server', description: (ping as { error: string }).error, variant: 'destructive' });
-        return;
-      }
-    }
-    localStorage.setItem('lan.mode', lanMode);
-    localStorage.setItem('lan.serverUrl', lanUrl.trim());
-    toast({ title: 'Network settings saved', description: 'Reloading to apply changes…' });
-    setTimeout(() => window.location.reload(), 600);
-  };
 
-  const testConnection = async () => {
-    setLanTesting(true);
-    const res = await pingServer(lanUrl);
-    setLanTesting(false);
-    setLanStatus(res.ok ? 'ok' : 'fail');
-    toast({
-      title: res.ok ? 'Connection successful' : 'Connection failed',
-      description: res.ok ? `Server responded at ${new Date(res.time).toLocaleTimeString()}` : (res as { error: string }).error,
-      variant: res.ok ? 'default' : 'destructive',
-    });
-  };
 
   const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
 
