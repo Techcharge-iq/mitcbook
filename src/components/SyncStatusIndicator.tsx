@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Cloud, CloudOff, Check, Loader2, AlertCircle, Radio } from 'lucide-react';
 import { syncBus } from '@/lib/cloudSync';
 import { cn } from '@/lib/utils';
