@@ -39,7 +39,7 @@ export function SyncStatusIndicator() {
     };
   }, []);
 
-  const map: Record<Status, { icon: JSX.Element; label: string; cls: string }> = {
+  const map: Record<Status, { icon: React.ReactNode; label: string; cls: string }> = {
     idle:    { icon: <Cloud className="h-3.5 w-3.5" />,       label: 'Synced',          cls: 'bg-muted text-muted-foreground' },
     saving:  { icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />, label: 'Saving…', cls: 'bg-amber-500/15 text-amber-600 dark:text-amber-400' },
     saved:   { icon: <Check className="h-3.5 w-3.5" />,       label: 'Saved',           cls: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' },
