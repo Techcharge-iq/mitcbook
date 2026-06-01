@@ -563,67 +563,8 @@ export default function Settings() {
         {/* Backup & Restore - Electron only */}
         {isElectron && <BackupRestore />}
 
-        {/* Network / Multi-user (LAN) */}
-        <Card>
-          <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Globe className="h-4 w-4 text-primary" />
-              Network / Multi-user
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Share data between PCs on the same local network.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 space-y-3">
-            <div className="space-y-1.5 max-w-md">
-              <Label className="text-xs">Mode</Label>
-              <Select value={lanMode} onValueChange={(v) => setLanMode(v as 'standalone' | 'client')}>
-                <SelectTrigger className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="standalone">Standalone (this PC only)</SelectItem>
-                  <SelectItem value="client">Client (connect to LAN server)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
 
-            {lanMode === 'client' && (
-              <div className="space-y-1.5 max-w-md">
-                <Label htmlFor="lanUrl" className="text-xs">Server URL</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="lanUrl"
-                    value={lanUrl}
-                    onChange={(e) => { setLanUrl(e.target.value); setLanStatus('idle'); }}
-                    placeholder="http://192.168.1.50:4000"
-                    className="h-9 flex-1"
-                  />
-                  <Button type="button" size="sm" variant="outline" onClick={testConnection} disabled={lanTesting || !lanUrl}>
-                    {lanTesting ? 'Testing…' : 'Test'}
-                  </Button>
-                </div>
-                {lanStatus === 'ok' && <p className="text-[11px] text-primary">✓ Server reachable</p>}
-                {lanStatus === 'fail' && <p className="text-[11px] text-destructive">✗ Could not reach server</p>}
-              </div>
-            )}
 
-            <div className="rounded-md border p-3 bg-muted/30 max-w-md">
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                <strong className="text-foreground">To host the database on a server PC:</strong> on that PC,
-                open the <code>server/</code> folder, run <code>npm install</code> then <code>npm start</code>.
-                It will print a LAN URL — paste it on each client PC.
-              </p>
-            </div>
-
-            <div className="flex justify-end max-w-md">
-              <Button type="button" size="sm" onClick={saveNetwork} className="gap-1.5">
-                <Save className="h-4 w-4" />
-                Save Network Settings
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
 
         {/* Save Button */}
         <div className="flex justify-end">
