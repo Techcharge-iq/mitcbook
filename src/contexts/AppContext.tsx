@@ -178,6 +178,76 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useLocalStorage<BusinessSettings>(companyKey('settings'), defaultSettings);
   const [auditLog, setAuditLog] = useLocalStorage<AuditEntry[]>(companyKey('audit_log'), []);
 
+  // Cloud sync for business_settings (per signed-in user, per company)
+  useEffect(() => {
+    let cancelled = false;
+    let hydrated = false;
+    (async () => {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: sess } = await supabase.auth.getSession();
+      const uid = sess.session?.user?.id;
+      if (!uid) return;
+      const { data, error } = await supabase
+        .from('business_settings')
+        .select('*')
+        .eq('user_id', uid)
+        .eq('company_id', selectedCompanyId)
+        .maybeSingle();
+      if (cancelled) return;
+      if (!error && data) {
+        setSettings({
+          name: data.name ?? '',
+          email: data.email ?? '',
+          phone: data.phone ?? '',
+          address: data.address ?? '',
+          logo: data.logo ?? undefined,
+          currency: (data.currency as BusinessSettings['currency']) ?? 'OMR',
+          taxNumber: data.tax_number ?? undefined,
+          theme: (data.theme as BusinessSettings['theme']) ?? 'system',
+          vatEnabled: data.vat_enabled ?? true,
+          defaultVatPercentage: Number(data.default_vat_percentage ?? 5),
+          bankName: data.bank_name ?? '',
+          bankAccountNumber: data.bank_account_number ?? '',
+          signature: data.signature ?? undefined,
+        });
+      }
+      hydrated = true;
+      void hydrated;
+    })();
+    return () => { cancelled = true; };
+  }, [selectedCompanyId]);
+
+  // Push settings changes to cloud
+  const settingsPushRef = React.useRef<string>('');
+  useEffect(() => {
+    const snapshot = JSON.stringify(settings);
+    if (snapshot === settingsPushRef.current) return;
+    settingsPushRef.current = snapshot;
+    (async () => {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: sess } = await supabase.auth.getSession();
+      const uid = sess.session?.user?.id;
+      if (!uid) return;
+      await supabase.from('business_settings').upsert({
+        user_id: uid,
+        company_id: selectedCompanyId,
+        name: settings.name,
+        email: settings.email,
+        phone: settings.phone,
+        address: settings.address,
+        logo: settings.logo,
+        currency: settings.currency,
+        tax_number: settings.taxNumber,
+        theme: settings.theme,
+        vat_enabled: settings.vatEnabled ?? true,
+        default_vat_percentage: settings.defaultVatPercentage ?? 0,
+        bank_name: settings.bankName,
+        bank_account_number: settings.bankAccountNumber,
+        signature: settings.signature,
+      }, { onConflict: 'user_id,company_id' });
+    })();
+  }, [settings, selectedCompanyId]);
+
   const normalizeAccounts = (input: Account[]): Account[] => {
     const hasKindField = input.every((account) => account.kind === 'group' || account.kind === 'ledger');
     const hasConsistentParent = input.every((account) => Object.prototype.hasOwnProperty.call(account, 'parentId'));
