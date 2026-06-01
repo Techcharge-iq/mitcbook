@@ -70,6 +70,7 @@ export function useRemoteCollection<T extends { id: string }>(
   useEffect(() => {
     if (!syncable || !userId) return;
     const unsub = cloudSubscribe(collection, userId, (event, row, oldRow) => {
+      syncBus.emit('remote-update');
       setValue((prev) => {
         const map = new Map(prev.map((r) => [r.id, r]));
         if (event === 'DELETE') {
