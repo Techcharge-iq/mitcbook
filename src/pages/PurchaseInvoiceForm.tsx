@@ -42,6 +42,7 @@ export default function PurchaseInvoiceForm() {
   const [invoiceNumberMode, setInvoiceNumberMode] = useState<'auto' | 'manual'>(existing?.invoiceNumberMode || 'auto');
   const [invoiceNumber, setInvoiceNumber] = useState(existing?.number || generatePurchaseInvoiceNumber());
   const [vatEnabled, setVatEnabled] = useState(existing?.vatEnabled ?? settings.vatEnabled ?? true);
+  const [invoiceDate, setInvoiceDate] = useState(existing?.invoiceDate || new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState(existing?.dueDate || defaultDueDate.toISOString().split('T')[0]);
   const [notes, setNotes] = useState(existing?.notes || '');
   const [terms, setTerms] = useState(existing?.terms || '');
