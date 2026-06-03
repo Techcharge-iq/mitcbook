@@ -21,8 +21,8 @@ import {
 } from '@/components/ui/sheet';
 import { useToast } from '@/hooks/use-toast';
 import { currencySymbols, type Invoice, type LineItem, type InvoiceStatus, type Client } from '@/types';
-import { Plus, Trash2, Save, ArrowLeft, Send, Download, Share2, Edit2, CreditCard } from 'lucide-react';
-import { generatePDF, shareViaWhatsApp } from '@/lib/documentUtils';
+import { Plus, Trash2, Save, ArrowLeft, Send, Download, Share2, Edit2, CreditCard, Printer } from 'lucide-react';
+import { generatePDF, printDocument, shareViaWhatsApp } from '@/lib/documentUtils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ItemPicker } from '@/components/ItemPicker';
 
@@ -376,6 +376,16 @@ export default function InvoiceForm() {
     }
   };
 
+  const handlePrint = async () => {
+    if (!existingInvoice) return;
+    const client = getClient(clientId);
+    try {
+      await printDocument({ type: 'invoice', document: existingInvoice, client, settings });
+    } catch (err) {
+      toast({ title: 'Print failed', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
+    }
+  };
+
   const handleShare = () => {
     if (!existingInvoice) return;
     const client = getClient(clientId);
@@ -422,6 +432,10 @@ export default function InvoiceForm() {
                 <span className="hidden sm:inline ml-1.5">Payment</span>
               </Button>
             )}
+            <Button variant="outline" size="sm" onClick={handlePrint} className="h-8 px-2">
+              <Printer className="h-4 w-4" />
+              <span className="hidden sm:inline ml-1.5">Print</span>
+            </Button>
             <Button variant="outline" size="sm" onClick={handleDownloadPDF} className="h-8 px-2">
               <Download className="h-4 w-4" />
               <span className="hidden sm:inline ml-1.5">PDF</span>
