@@ -21,8 +21,8 @@ import {
 } from '@/components/ui/sheet';
 import { useToast } from '@/hooks/use-toast';
 import { currencySymbols, type Invoice, type LineItem, type InvoiceStatus, type Client } from '@/types';
-import { Plus, Trash2, Save, ArrowLeft, Send, Download, Share2, Edit2, CreditCard } from 'lucide-react';
-import { generatePDF, shareViaWhatsApp } from '@/lib/documentUtils';
+import { Plus, Trash2, Save, ArrowLeft, Send, Download, Share2, Edit2, CreditCard, Printer } from 'lucide-react';
+import { generatePDF, printDocument, shareViaWhatsApp } from '@/lib/documentUtils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ItemPicker } from '@/components/ItemPicker';
 
