@@ -88,7 +88,7 @@ const COLLECTIONS: Record<
     table: 'projects',
     cols: baseCols({
       name: 'name',
-      vendorId: 'vendor_id',
+      customerId: 'vendor_id',
       totalValue: 'total_value',
       lpoNumber: 'lpo_number',
       startDate: 'start_date',
