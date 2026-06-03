@@ -376,6 +376,16 @@ export default function InvoiceForm() {
     }
   };
 
+  const handlePrint = async () => {
+    if (!existingInvoice) return;
+    const client = getClient(clientId);
+    try {
+      await printDocument({ type: 'invoice', document: existingInvoice, client, settings });
+    } catch (err) {
+      toast({ title: 'Print failed', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
+    }
+  };
+
   const handleShare = () => {
     if (!existingInvoice) return;
     const client = getClient(clientId);
