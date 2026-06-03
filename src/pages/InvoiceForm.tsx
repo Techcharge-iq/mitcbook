@@ -432,6 +432,10 @@ export default function InvoiceForm() {
                 <span className="hidden sm:inline ml-1.5">Payment</span>
               </Button>
             )}
+            <Button variant="outline" size="sm" onClick={handlePrint} className="h-8 px-2">
+              <Printer className="h-4 w-4" />
+              <span className="hidden sm:inline ml-1.5">Print</span>
+            </Button>
             <Button variant="outline" size="sm" onClick={handleDownloadPDF} className="h-8 px-2">
               <Download className="h-4 w-4" />
               <span className="hidden sm:inline ml-1.5">PDF</span>
