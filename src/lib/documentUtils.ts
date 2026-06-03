@@ -296,26 +296,113 @@ export async function generatePDFBlob({ type, document: docData, client, setting
   container.style.position = 'fixed';
   container.style.left = '-10000px';
   container.style.top = '0';
+  container.style.width = '800px';
   container.style.background = '#ffffff';
   container.innerHTML = styleHtml + bodyHtml;
   window.document.body.appendChild(container);
 
-  try {
-    const html2pdfModule = await import('html2pdf.js');
-    const html2pdf = (html2pdfModule.default ?? html2pdfModule) as any;
-    const worker = html2pdf()
-      .set({
-        margin: [10, 10, 10, 10],
-        filename: `${type}-${docData.number}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      })
-      .from(container)
-      .toPdf();
+  // Ensure layout settles and any logo image loads before snapshot
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  const imgs = Array.from(container.querySelectorAll('img'));
+  await Promise.all(
+    imgs.map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          if ((img as HTMLImageElement).complete) return resolve();
+          img.addEventListener('load', () => resolve(), { once: true });
+          img.addEventListener('error', () => resolve(), { once: true });
+        }),
+    ),
+  );
 
-    return await worker.outputPdf('blob');
+  try {
+    if (!container.offsetWidth || !container.offsetHeight) {
+      throw new Error('PDF content failed to render. Try again.');
+    }
+
+    const [{ default: html2canvas }, jsPDFModule] = await Promise.all([
+      import('html2canvas'),
+      import('jspdf'),
+    ]);
+    const JsPDF = (jsPDFModule as any).jsPDF ?? (jsPDFModule as any).default;
+
+    const canvas = await html2canvas(container, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+      windowWidth: container.scrollWidth,
+      windowHeight: container.scrollHeight,
+    });
+
+    if (!canvas.width || !canvas.height) {
+      throw new Error('PDF canvas was empty. Try again.');
+    }
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const pdf = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 10;
+    const usableWidth = pageWidth - margin * 2;
+    const imgHeight = (canvas.height * usableWidth) / canvas.width;
+
+    if (imgHeight <= pageHeight - margin * 2) {
+      pdf.addImage(imgData, 'JPEG', margin, margin, usableWidth, imgHeight);
+    } else {
+      // Multi-page: slice the canvas vertically
+      const pageContentHeightPx = ((pageHeight - margin * 2) * canvas.width) / usableWidth;
+      let renderedPx = 0;
+      let pageIndex = 0;
+      while (renderedPx < canvas.height) {
+        const sliceHeightPx = Math.min(pageContentHeightPx, canvas.height - renderedPx);
+        const sliceCanvas = window.document.createElement('canvas');
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = sliceHeightPx;
+        const ctx = sliceCanvas.getContext('2d');
+        if (!ctx) throw new Error('Canvas context unavailable');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+        ctx.drawImage(canvas, 0, renderedPx, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+        const sliceData = sliceCanvas.toDataURL('image/jpeg', 0.95);
+        const sliceHeightMm = (sliceHeightPx * usableWidth) / canvas.width;
+        if (pageIndex > 0) pdf.addPage();
+        pdf.addImage(sliceData, 'JPEG', margin, margin, usableWidth, sliceHeightMm);
+        renderedPx += sliceHeightPx;
+        pageIndex++;
+      }
+    }
+
+    return pdf.output('blob');
   } finally {
     container.remove();
   }
+}
+
+// ---------------- PRINT ----------------
+export async function printDocument({ type, document: docData, client, settings }: DocumentData) {
+  const pdfBlob = await generatePDFBlob({ type, document: docData, client, settings });
+  const objectUrl = window.URL.createObjectURL(pdfBlob);
+  const iframe = window.document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  iframe.src = objectUrl;
+  window.document.body.appendChild(iframe);
+  iframe.onload = () => {
+    try {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    } catch (e) {
+      console.error('[print] failed:', e);
+    }
+    // Cleanup later — give the print dialog time to open.
+    setTimeout(() => {
+      window.URL.revokeObjectURL(objectUrl);
+      iframe.remove();
+    }, 60_000);
+  };
 }
