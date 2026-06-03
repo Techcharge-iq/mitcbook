@@ -140,14 +140,14 @@ export async function generatePDFBlob({ type, document: docData, client, setting
       * { margin: 0; padding: 0; box-sizing: border-box; }
       .pdf-root {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        padding: 40px;
+        padding: 0;
         color: #1a1a2e;
         width: 800px;
         background: #ffffff;
       }
       .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 2px solid #e5e7eb; }
-      .logo-section { display: flex; align-items: center; gap: 12px; }
-      .logo { width: 60px; height: 60px; object-fit: contain; }
+      .logo-section { display: flex; align-items: center; gap: 16px; }
+      .logo { width: 110px; height: 110px; object-fit: contain; }
       .business-name { font-size: 24px; font-weight: bold; color: #3b82f6; }
       .doc-info { text-align: right; }
       .doc-type { font-size: 28px; font-weight: bold; text-transform: uppercase; color: ${isInvoice ? '#10b981' : '#3b82f6'}; }
