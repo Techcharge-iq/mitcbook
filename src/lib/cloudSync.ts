@@ -229,10 +229,12 @@ export async function cloudLoadAll<T>(collection: string): Promise<T[] | null> {
   if (!uid) return null;
   const { data, error } = await supabase.from(meta.table as any).select('*').eq('user_id', uid);
   if (error) {
-    console.warn(`[cloud] load ${collection} failed:`, error.message);
+    console.error(`[cloud] load ${collection} failed:`, error);
     return null;
   }
-  return (data ?? []).map((r) => fromRow(collection, r)) as T[];
+  const rows = (data ?? []).map((r) => fromRow(collection, r)) as T[];
+  console.info(`[cloud] load ${collection} →`, rows.length);
+  return rows;
 }
 
 export async function cloudFetchById<T = any>(collection: string, id: string): Promise<T | null> {
