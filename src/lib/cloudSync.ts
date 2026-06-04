@@ -282,7 +282,7 @@ export async function cloudDelete(collection: string, id: string): Promise<void>
   syncBus.emit('saving');
   const { error } = await supabase.from(meta.table as any).delete().eq('id', id).eq('user_id', uid);
   if (error) {
-    console.warn(`[cloud] delete ${collection}/${id} failed:`, error.message);
+    console.error(`[cloud] delete ${collection}/${id} failed:`, error);
     syncBus.emit('error');
   } else {
     syncBus.emit('saved');
