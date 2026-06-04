@@ -266,9 +266,10 @@ export async function cloudUpsert(collection: string, item: any): Promise<void> 
   syncBus.emit('saving');
   const { error } = await supabase.from(meta.table as any).upsert(row, { onConflict: 'id' });
   if (error) {
-    console.warn(`[cloud] upsert ${collection}/${item.id} failed:`, error.message);
+    console.error(`[cloud] upsert ${collection}/${item.id} failed:`, error);
     syncBus.emit('error');
   } else {
+    console.info(`[cloud] upsert ${collection}/${item.id} ok`);
     syncBus.emit('saved');
   }
 }
