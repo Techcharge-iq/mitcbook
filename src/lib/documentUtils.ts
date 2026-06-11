@@ -134,6 +134,15 @@ export async function generatePDFBlob({ type, document: docData, client, setting
   const currencySymbol = currencySymbols[settings.currency];
   const isInvoice = type === 'invoice';
   const invoice = isInvoice ? (docData as Invoice) : null;
+  const docTypeLabel = isInvoice ? 'TAX INVOICE' : 'QUOTATION';
+  const subtotal = docData.items.reduce((s, i) => s + (i.total || 0), 0);
+  const vatAmount = docData.items.reduce(
+    (s, i) => s + (i.vatApplicable ? (i.vatAmount ?? 0) : 0),
+    0,
+  );
+  const grandTotal = subtotal + vatAmount;
+  const showVat = vatAmount > 0;
+  const fmt = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
   const styleHtml = `
     <style>
@@ -193,7 +202,7 @@ export async function generatePDFBlob({ type, document: docData, client, setting
           </div>
         </div>
         <div class="doc-info">
-          <div class="doc-type">${type}</div>
+          <div class="doc-type">${docTypeLabel}</div>
           <div class="doc-number">${docData.number}</div>
           <div class="doc-date">Date: ${new Date((isInvoice && invoice?.invoiceDate) ? invoice.invoiceDate : (docData as any).invoiceDate || docData.createdAt).toLocaleDateString('en-IN')}</div>
           ${isInvoice && invoice?.dueDate ? `<div class="doc-date">Due: ${new Date(invoice.dueDate).toLocaleDateString('en-IN')}</div>` : ''}
@@ -231,7 +240,7 @@ export async function generatePDFBlob({ type, document: docData, client, setting
               </td>
               <td>${item.quantity}</td>
               <td>${currencySymbol}${item.rate.toLocaleString('en-IN')}</td>
-              <td>${currencySymbol}${(item.total + (item.vatApplicable ? (item.vatAmount ?? 0) : 0)).toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</td>
+              <td>${currencySymbol}${fmt(item.total || 0)}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -241,26 +250,24 @@ export async function generatePDFBlob({ type, document: docData, client, setting
         <div class="totals-box">
           <div class="total-row">
             <span>Subtotal</span>
-            <span>${currencySymbol}${docData.items.reduce((s, i) => s + i.total, 0).toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
+            <span>${currencySymbol}${fmt(subtotal)}</span>
           </div>
+          ${showVat ? `
           <div class="total-row">
-            <span>VAT</span>
-            <span>${currencySymbol}${docData.items.reduce((s, i) => s + (i.vatApplicable ? (i.vatAmount ?? 0) : 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
-          </div>
-          <div class="total-row">
-            <span>Total After VAT</span>
-            <span>${currencySymbol}${docData.netTotal.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
-          </div>
+            <span>VAT (5%)</span>
+            <span>${currencySymbol}${fmt(vatAmount)}</span>
+          </div>` : ''}
           <div class="total-row grand">
-            <span>Grand Total</span>
-            <span>${currencySymbol}${docData.netTotal.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
+            <span>${showVat ? 'Grand Total' : 'Total'}</span>
+            <span>${currencySymbol}${fmt(grandTotal)}</span>
           </div>
         </div>
       </div>
 
       <div class="amount-in-words">
-        <p><strong>Amount in Words:</strong> ${numberToWords(docData.netTotal, settings.currency)}</p>
+        <p><strong>Amount in Words:</strong> ${numberToWords(grandTotal, settings.currency)}</p>
       </div>
+
 
       ${(settings.bankName || settings.bankAccountNumber) ? `
         <div class="notes-section">
