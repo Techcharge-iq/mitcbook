@@ -253,7 +253,7 @@ export async function generatePDFBlob({ type, document: docData, client, setting
           </div>
           ${showVat ? `
           <div class="total-row">
-            <span>VAT (5%)</span>
+            <span>VAT (${vatRate}%)</span>
             <span>${currencySymbol}${fmt(vatAmount)}</span>
           </div>` : ''}
           <div class="total-row grand">
