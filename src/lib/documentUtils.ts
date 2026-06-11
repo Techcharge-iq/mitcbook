@@ -240,7 +240,7 @@ export async function generatePDFBlob({ type, document: docData, client, setting
               </td>
               <td>${item.quantity}</td>
               <td>${currencySymbol}${item.rate.toLocaleString('en-IN')}</td>
-              <td>${currencySymbol}${(item.total + (item.vatApplicable ? (item.vatAmount ?? 0) : 0)).toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</td>
+              <td>${currencySymbol}${fmt(item.total || 0)}</td>
             </tr>
           `).join('')}
         </tbody>
