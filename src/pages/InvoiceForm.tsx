@@ -78,9 +78,10 @@ export default function InvoiceForm() {
   const [tempItem, setTempItem] = useState<LineItem>({ id: '', name: '', description: '', quantity: 1, rate: 0, total: 0 });
 
   const canUseManualInvoiceNumber = settings.allowManualInvoiceNumberEntry || existingInvoice?.invoiceNumberMode === 'manual';
-  const netTotal = useMemo(() => items.reduce((sum, item) => sum + item.total, 0), [items]);
-  const vatTotal = useMemo(() => (vatEnabled ? items.reduce((sum, item) => sum + (item.vatAmount ?? 0), 0) : 0), [items, vatEnabled]);
-  const grandTotal = netTotal + vatTotal;
+  const netTotal = useMemo(() => items.reduce((sum, item) => sum + (item.total || 0), 0), [items]);
+  const vatRate = vatEnabled ? (settings.defaultVatPercentage ?? 5) : 0;
+  const vatTotal = useMemo(() => +(netTotal * vatRate / 100).toFixed(3), [netTotal, vatRate]);
+  const grandTotal = +(netTotal + vatTotal).toFixed(3);
   // Calculate displayed status based on payment records
   const displayedStatus: InvoiceStatus | 'draft' = existingInvoice ? calculateInvoicePaymentStatus(existingInvoice.id) : 'draft';
   const currentStatus: InvoiceStatus = existingInvoice?.status === 'draft' 
@@ -718,9 +719,8 @@ export default function InvoiceForm() {
           <div className="mt-3 flex justify-end">
             <div className="w-full sm:w-64 rounded-lg bg-primary/10 p-2.5 space-y-1">
               <div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">Subtotal</span><span>{currencySymbol}{netTotal.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span></div>
-              <div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">VAT</span><span>{currencySymbol}{vatTotal.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span></div>
-              <div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">Total After VAT</span><span>{currencySymbol}{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span></div>
-              <div className="flex items-center justify-between text-sm font-bold pt-1 border-t"><span>Grand Total</span><span>{currencySymbol}{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span></div>
+              {vatEnabled && <div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">VAT ({vatRate}%)</span><span>{currencySymbol}{vatTotal.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span></div>}
+              <div className="flex items-center justify-between text-sm font-bold pt-1 border-t"><span>{vatEnabled ? 'Grand Total' : 'Total'}</span><span>{currencySymbol}{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span></div>
             </div>
           </div>
         </CardContent>

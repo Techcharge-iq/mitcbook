@@ -136,11 +136,10 @@ export async function generatePDFBlob({ type, document: docData, client, setting
   const invoice = isInvoice ? (docData as Invoice) : null;
   const docTypeLabel = isInvoice ? 'TAX INVOICE' : 'QUOTATION';
   const subtotal = docData.items.reduce((s, i) => s + (i.total || 0), 0);
-  const vatAmount = docData.items.reduce(
-    (s, i) => s + (i.vatApplicable ? (i.vatAmount ?? 0) : 0),
-    0,
-  );
-  const grandTotal = subtotal + vatAmount;
+  const vatEnabledFlag = (docData as any).vatEnabled !== false; // default on
+  const vatRate = vatEnabledFlag ? (settings.defaultVatPercentage ?? 5) : 0;
+  const vatAmount = +(subtotal * vatRate / 100).toFixed(3);
+  const grandTotal = +(subtotal + vatAmount).toFixed(3);
   const showVat = vatAmount > 0;
   const fmt = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
@@ -254,7 +253,7 @@ export async function generatePDFBlob({ type, document: docData, client, setting
           </div>
           ${showVat ? `
           <div class="total-row">
-            <span>VAT (5%)</span>
+            <span>VAT (${vatRate}%)</span>
             <span>${currencySymbol}${fmt(vatAmount)}</span>
           </div>` : ''}
           <div class="total-row grand">
