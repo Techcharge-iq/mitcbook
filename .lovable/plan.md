@@ -1,72 +1,74 @@
-# Fix: Data not reaching Lovable Cloud
+# Fix: Invoice PDF — "TAX INVOICE" title and clean VAT totals
 
-## Root cause
+Scope: `src/lib/documentUtils.ts` only (the shared PDF template). No form/state changes — `InvoiceForm.tsx` already computes per-line `vatAmount` from the 5% default and the `vatEnabled` toggle correctly, and stores `netTotal = subtotal + VAT`.
 
-The app's sync layer (`useRemoteCollection` → `cloudSync.cloudUpsert`/`cloudLoadAll`) is wired correctly and the RLS policies on every business table are correct (`auth.uid() = user_id`). However, **no role has any GRANT on any table in the `public` schema**:
+## Changes in `src/lib/documentUtils.ts`
 
-```
-SELECT grantee, table_name FROM information_schema.role_table_grants
- WHERE table_schema='public' AND grantee IN ('anon','authenticated','service_role');
-→ 0 rows
-```
+### 1. Title
 
-Supabase's Data API (PostgREST) requires explicit GRANTs — RLS alone is not enough. Every `supabase.from('projects').upsert(...)` call from the signed-in client is rejected with `permission denied for table projects`. `cloudUpsert` only logs `console.warn` and emits a `syncBus` `error` event, so the UI keeps appearing to work while data lives only in `localStorage`. That's why:
+In the header (`<div class="doc-type">${type}</div>`, line 196), render `"TAX INVOICE"` when `type === 'invoice'`, and keep `"QUOTATION"` otherwise. CSS `text-transform: uppercase` stays.
 
-- Lovable Cloud tables are empty (`projects`, `invoices`, `vouchers`, `purchase_invoices`, `clients` all show `count = 0`).
-- A second PC signing into the same account sees nothing — the initial `cloudLoadAll` also returns "permission denied" → `null` → nothing merged into local state.
-
-A previous migration described as "adding Data API grants" did not actually take effect in the live database (no GRANT rows exist for any role on any public table).
-
-## Fix
-
-### 1. Migration: restore GRANTs on every business table
-
-Grant the Data API roles their normal privileges. Every business table is per-user (every policy scopes to `auth.uid()`), so `anon` gets nothing.
-
-```sql
--- Per-user business tables
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.clients          TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.quotations       TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.invoices         TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.projects         TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.purchase_invoices TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.payments         TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.accounts         TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.journal_entries  TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.vouchers         TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.items            TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.salesmen         TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.companies        TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.business_settings TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles         TO authenticated;
-GRANT SELECT                          ON public.user_roles      TO authenticated;
-GRANT SELECT, INSERT                  ON public.audit_log       TO authenticated;
-
-GRANT ALL ON public.clients, public.quotations, public.invoices, public.projects,
-            public.purchase_invoices, public.payments, public.accounts,
-            public.journal_entries, public.vouchers, public.items, public.salesmen,
-            public.companies, public.business_settings, public.profiles,
-            public.user_roles, public.audit_log TO service_role;
+```ts
+const docTypeLabel = isInvoice ? 'TAX INVOICE' : 'QUOTATION';
+// ...
+<div class="doc-type">${docTypeLabel}</div>
 ```
 
-No schema, RLS, or policy change — only privileges.
+### 2. Totals block (lines 240–259)
 
-### 2. `src/lib/cloudSync.ts` — make failures visible + minimal logs
+Replace the four-row block (Subtotal / VAT / Total After VAT / Grand Total — the last two are duplicates) with three derived-from-items rows:
 
-- In `cloudUpsert`, `cloudDelete`, and `cloudLoadAll`: keep the existing `console.warn` but also `console.error` with the operation + collection + id + the full Supabase `error` object (code, message, hint) so a permission-denied/RLS regression is obvious in DevTools.
-- Add a one-line `console.info('[cloud] upsert', collection, id)` on success and `console.info('[cloud] load', collection, rows.length)` after a successful load.
+```ts
+const subtotal = docData.items.reduce((s, i) => s + (i.total || 0), 0);
+const vatAmount = docData.items.reduce(
+  (s, i) => s + (i.vatApplicable ? (i.vatAmount ?? 0) : 0),
+  0,
+);
+const grandTotal = subtotal + vatAmount;
+const showVat = vatAmount > 0;
+```
 
-No behavioral change beyond logging.
+Rendered:
 
-### 3. Verification
+```html
+<div class="totals-box">
+  <div class="total-row">
+    <span>Subtotal</span>
+    <span>{currency}{subtotal.toFixed(3)}</span>
+  </div>
+  {showVat && (
+    <div class="total-row">
+      <span>VAT (5%)</span>
+      <span>{currency}{vatAmount.toFixed(3)}</span>
+    </div>
+  )}
+  <div class="total-row grand">
+    <span>{showVat ? 'Grand Total' : 'Total'}</span>
+    <span>{currency}{grandTotal.toFixed(3)}</span>
+  </div>
+</div>
+```
 
-After the migration runs:
+Notes:
+- `grandTotal` is recomputed from items in the PDF (no hardcoded value, no reliance on the stored `netTotal`). This guarantees the printed total matches whatever items the user sees.
+- The line-item "Amount" column (line 234) currently adds per-line VAT into the row total, which makes column sums not equal the Subtotal. Change it back to `item.total` so column math is consistent: Subtotal = Σ Amount, VAT shown once, Grand Total = Subtotal + VAT.
+- The "Amount in Words" line uses `grandTotal` (was `docData.netTotal`) so it stays in sync when VAT is toggled.
 
-1. Sign in on PC A, create a Project and a Sales Invoice. DevTools should show `[cloud] upsert projects <id>` and `[cloud] upsert invoices <id>` with no warning.
-2. Query the DB: `SELECT count(*) FROM projects; SELECT count(*) FROM invoices;` — both > 0.
-3. Sign in on PC B with the same account. On load, DevTools should show `[cloud] load projects N` and `[cloud] load invoices N` with N matching PC A. The Projects list and Invoices list should show the rows created on PC A.
-4. Edit the project on PC B; PC A's open list should update within ~1s via the existing realtime subscription.
+### 3. VAT-only behavior
+
+No new state. VAT visibility is driven by `vatAmount > 0`, which is already controlled by the form's `vatEnabled` toggle:
+- VAT enabled → each item carries `vatApplicable = true`, `vatPercentage = 5`, `vatAmount = total * 0.05` → row shows.
+- VAT disabled → items have `vatAmount = 0` → row hidden, label switches to "Total".
+
+### 4. Test verification (run manually after build)
+
+- Subtotal 100 OMR with VAT on → VAT row shows `OMR 5.000`, Grand Total `OMR 105.000`.
+- Subtotal 250 OMR with VAT on → VAT row shows `OMR 12.500`, Grand Total `OMR 262.500`.
+- VAT off → no VAT row, Total = Subtotal.
+- Open PDF preview and downloaded PDF — both render identically since they share the same HTML template.
 
 ## Out of scope
 
-No UI, routing, AppContext, sync-status indicator, PDF, or auth changes. Local-first behavior, RLS policies, and table schemas stay exactly as they are.
+- No changes to `InvoiceForm.tsx`, `QuotationForm.tsx`, or `PurchaseInvoiceForm.tsx`. Their on-screen totals already match this PDF math (Subtotal + VAT = Grand Total).
+- No DB / cloud-sync changes. `vatEnabled` continues to live on the local invoice record and gates whether items carry `vatAmount`; the PDF derives display purely from the items it receives.
+- Quotation title stays "QUOTATION".

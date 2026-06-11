@@ -134,6 +134,15 @@ export async function generatePDFBlob({ type, document: docData, client, setting
   const currencySymbol = currencySymbols[settings.currency];
   const isInvoice = type === 'invoice';
   const invoice = isInvoice ? (docData as Invoice) : null;
+  const docTypeLabel = isInvoice ? 'TAX INVOICE' : 'QUOTATION';
+  const subtotal = docData.items.reduce((s, i) => s + (i.total || 0), 0);
+  const vatAmount = docData.items.reduce(
+    (s, i) => s + (i.vatApplicable ? (i.vatAmount ?? 0) : 0),
+    0,
+  );
+  const grandTotal = subtotal + vatAmount;
+  const showVat = vatAmount > 0;
+  const fmt = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
   const styleHtml = `
     <style>
