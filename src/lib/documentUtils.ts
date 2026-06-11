@@ -250,26 +250,24 @@ export async function generatePDFBlob({ type, document: docData, client, setting
         <div class="totals-box">
           <div class="total-row">
             <span>Subtotal</span>
-            <span>${currencySymbol}${docData.items.reduce((s, i) => s + i.total, 0).toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
+            <span>${currencySymbol}${fmt(subtotal)}</span>
           </div>
+          ${showVat ? `
           <div class="total-row">
-            <span>VAT</span>
-            <span>${currencySymbol}${docData.items.reduce((s, i) => s + (i.vatApplicable ? (i.vatAmount ?? 0) : 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
-          </div>
-          <div class="total-row">
-            <span>Total After VAT</span>
-            <span>${currencySymbol}${docData.netTotal.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
-          </div>
+            <span>VAT (5%)</span>
+            <span>${currencySymbol}${fmt(vatAmount)}</span>
+          </div>` : ''}
           <div class="total-row grand">
-            <span>Grand Total</span>
-            <span>${currencySymbol}${docData.netTotal.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
+            <span>${showVat ? 'Grand Total' : 'Total'}</span>
+            <span>${currencySymbol}${fmt(grandTotal)}</span>
           </div>
         </div>
       </div>
 
       <div class="amount-in-words">
-        <p><strong>Amount in Words:</strong> ${numberToWords(docData.netTotal, settings.currency)}</p>
+        <p><strong>Amount in Words:</strong> ${numberToWords(grandTotal, settings.currency)}</p>
       </div>
+
 
       ${(settings.bankName || settings.bankAccountNumber) ? `
         <div class="notes-section">
