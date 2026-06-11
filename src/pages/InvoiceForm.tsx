@@ -78,9 +78,10 @@ export default function InvoiceForm() {
   const [tempItem, setTempItem] = useState<LineItem>({ id: '', name: '', description: '', quantity: 1, rate: 0, total: 0 });
 
   const canUseManualInvoiceNumber = settings.allowManualInvoiceNumberEntry || existingInvoice?.invoiceNumberMode === 'manual';
-  const netTotal = useMemo(() => items.reduce((sum, item) => sum + item.total, 0), [items]);
-  const vatTotal = useMemo(() => (vatEnabled ? items.reduce((sum, item) => sum + (item.vatAmount ?? 0), 0) : 0), [items, vatEnabled]);
-  const grandTotal = netTotal + vatTotal;
+  const netTotal = useMemo(() => items.reduce((sum, item) => sum + (item.total || 0), 0), [items]);
+  const vatRate = vatEnabled ? (settings.defaultVatPercentage ?? 5) : 0;
+  const vatTotal = useMemo(() => +(netTotal * vatRate / 100).toFixed(3), [netTotal, vatRate]);
+  const grandTotal = +(netTotal + vatTotal).toFixed(3);
   // Calculate displayed status based on payment records
   const displayedStatus: InvoiceStatus | 'draft' = existingInvoice ? calculateInvoicePaymentStatus(existingInvoice.id) : 'draft';
   const currentStatus: InvoiceStatus = existingInvoice?.status === 'draft' 
