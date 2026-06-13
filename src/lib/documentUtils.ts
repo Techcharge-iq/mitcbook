@@ -144,7 +144,8 @@ export async function generatePDFBlob({ type, document: docData, client, setting
   const vatAmount = +(subtotal * vatRate / 100).toFixed(3);
   const grandTotal = +(subtotal + vatAmount).toFixed(3);
   const showVat = vatAmount > 0;
-  const fmt = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  const money = (n: number) => `${currencySymbol} ${fmt(n)}`;
 
   const styleHtml = `
     <style>
