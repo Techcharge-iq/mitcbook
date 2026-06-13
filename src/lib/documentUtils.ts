@@ -228,6 +228,17 @@ export async function generatePDFBlob({ type, document: docData, client, setting
             ${client?.address || ''}
           </div>
         </div>
+        ${(docData.notes || docData.terms) ? `
+        <div class="party-section right-col">
+          ${docData.notes ? `
+            <h3>Notes</h3>
+            <div class="notes-body">${docData.notes}</div>
+          ` : ''}
+          ${docData.terms ? `
+            <div class="terms-label">Payment Terms</div>
+            <div class="terms-body">${docData.terms}</div>
+          ` : ''}
+        </div>` : ''}
       </div>
 
       <table>
@@ -236,8 +247,8 @@ export async function generatePDFBlob({ type, document: docData, client, setting
             <th style="width: 50px;">S.No</th>
             <th>Description</th>
             <th style="width: 80px;">Qty</th>
-            <th style="width: 120px;">Rate</th>
-            <th style="width: 120px;">Amount</th>
+            <th style="width: 130px;">Rate</th>
+            <th style="width: 140px;">Amount</th>
           </tr>
         </thead>
         <tbody>
@@ -249,8 +260,8 @@ export async function generatePDFBlob({ type, document: docData, client, setting
                 ${item.description ? `<div class="item-desc">${item.description}</div>` : ''}
               </td>
               <td>${item.quantity}</td>
-              <td>${currencySymbol}${item.rate.toLocaleString('en-IN')}</td>
-              <td>${currencySymbol}${fmt(item.total || 0)}</td>
+              <td>${money(item.rate || 0)}</td>
+              <td>${money(item.total || 0)}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -260,16 +271,16 @@ export async function generatePDFBlob({ type, document: docData, client, setting
         <div class="totals-box">
           <div class="total-row">
             <span>Subtotal</span>
-            <span>${currencySymbol}${fmt(subtotal)}</span>
+            <span>${money(subtotal)}</span>
           </div>
           ${showVat ? `
           <div class="total-row">
             <span>VAT (${vatRate}%)</span>
-            <span>${currencySymbol}${fmt(vatAmount)}</span>
+            <span>${money(vatAmount)}</span>
           </div>` : ''}
           <div class="total-row grand">
             <span>${showVat ? 'Grand Total' : 'Total'}</span>
-            <span>${currencySymbol}${fmt(grandTotal)}</span>
+            <span>${money(grandTotal)}</span>
           </div>
         </div>
       </div>
@@ -277,7 +288,6 @@ export async function generatePDFBlob({ type, document: docData, client, setting
       <div class="amount-in-words">
         <p><strong>Amount in Words:</strong> ${numberToWords(grandTotal, settings.currency)}</p>
       </div>
-
 
       ${(settings.bankName || settings.bankAccountNumber) ? `
         <div class="notes-section">
@@ -289,19 +299,11 @@ export async function generatePDFBlob({ type, document: docData, client, setting
         </div>
       ` : ''}
 
-      ${docData.notes ? `
-        <div class="notes-section">
-          <h4>Notes</h4>
-          <p>${docData.notes}</p>
-        </div>
-      ` : ''}
-
-      ${docData.terms ? `
-        <div class="notes-section">
-          <h4>Terms & Conditions</h4>
-          <p>${docData.terms}</p>
-        </div>
-      ` : ''}
+      <div class="regards">
+        <div>Regards,</div>
+        <div class="company">${settings.name || 'Your Business'}</div>
+        <div class="signatory">Authorized Signatory</div>
+      </div>
 
       <div class="footer">Thank you for your business!</div>
     </div>
