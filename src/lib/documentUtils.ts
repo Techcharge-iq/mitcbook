@@ -14,54 +14,57 @@ function numberToWords(num: number, currency: string): string {
   const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
   const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
   const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-  const scales = ['', 'Thousand', 'Lakh', 'Crore'];
+  const scales = ['', 'Thousand', 'Million', 'Billion', 'Trillion'];
 
   const isOmani = currency === 'OMR';
   const currencyUnit = isOmani ? 'Omani Rial' : 'Rupee';
   const currencyUnitPlural = isOmani ? 'Omani Rials' : 'Rupees';
+  const subUnit = isOmani ? 'Fils' : 'Paise';
+  const subUnitDivisor = isOmani ? 1000 : 100; // OMR uses 3 decimals (fils)
 
   function convertBelowThousand(n: number): string {
     if (n === 0) return '';
     if (n < 10) return ones[n];
     if (n < 20) return teens[n - 10];
     if (n < 100) {
-      const tenPlace = Math.floor(n / 10);
-      const remainder = n % 10;
-      return tens[tenPlace] + (remainder ? ' ' + ones[remainder] : '');
+      const t = Math.floor(n / 10);
+      const r = n % 10;
+      return tens[t] + (r ? ' ' + ones[r] : '');
     }
-    const hundredPlace = Math.floor(n / 100);
-    const afterHundred = n % 100;
-    return ones[hundredPlace] + ' Hundred' + (afterHundred ? ' ' + convertBelowThousand(afterHundred) : '');
+    const h = Math.floor(n / 100);
+    const rest = n % 100;
+    return ones[h] + ' Hundred' + (rest ? ' ' + convertBelowThousand(rest) : '');
   }
 
   const intPart = Math.floor(num);
-  const decimalPart = Math.round((num - intPart) * 100);
-
-  if (intPart === 0) {
-    return `Zero ${currencyUnitPlural} Only`;
-  }
+  const decimalPart = Math.round((num - intPart) * subUnitDivisor);
 
   let result = '';
-  let scaleIndex = 0;
-  let temp = intPart;
-
-  while (temp > 0) {
-    const chunk = temp % (scaleIndex === 0 ? 1000 : scaleIndex === 1 ? 1000 : 10000000);
-    if (chunk !== 0) {
-      result = convertBelowThousand(chunk) + (scales[scaleIndex] ? ' ' + scales[scaleIndex] : '') + ' ' + result;
+  if (intPart === 0) {
+    result = 'Zero';
+  } else {
+    let temp = intPart;
+    let scaleIndex = 0;
+    const parts: string[] = [];
+    while (temp > 0) {
+      const chunk = temp % 1000;
+      if (chunk !== 0) {
+        const chunkWords = convertBelowThousand(chunk) + (scales[scaleIndex] ? ' ' + scales[scaleIndex] : '');
+        parts.unshift(chunkWords);
+      }
+      temp = Math.floor(temp / 1000);
+      scaleIndex++;
     }
-    temp = Math.floor(temp / (scaleIndex === 0 ? 1000 : scaleIndex === 1 ? 1000 : 10000000));
-    scaleIndex++;
+    result = parts.join(' ');
   }
 
-  result = result.trim() + ' ' + (intPart === 1 ? currencyUnit : currencyUnitPlural);
+  result += ' ' + (intPart === 1 ? currencyUnit : currencyUnitPlural);
 
   if (decimalPart > 0) {
-    result += ' and ' + convertBelowThousand(decimalPart) + ' Fils';
+    result += ' and ' + convertBelowThousand(decimalPart) + ' ' + subUnit;
   }
 
-  result += ' Only';
-  return result;
+  return result + ' Only';
 }
 
 // ---------------- FIXED FUNCTION ----------------
@@ -141,7 +144,8 @@ export async function generatePDFBlob({ type, document: docData, client, setting
   const vatAmount = +(subtotal * vatRate / 100).toFixed(3);
   const grandTotal = +(subtotal + vatAmount).toFixed(3);
   const showVat = vatAmount > 0;
-  const fmt = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  const money = (n: number) => `${currencySymbol} ${fmt(n)}`;
 
   const styleHtml = `
     <style>
@@ -153,7 +157,7 @@ export async function generatePDFBlob({ type, document: docData, client, setting
         width: 800px;
         background: #ffffff;
       }
-      .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 2px solid #e5e7eb; }
+      .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 2px solid #e5e7eb; }
       .logo-section { display: flex; align-items: center; gap: 16px; }
       .logo { width: 110px; height: 110px; object-fit: contain; }
       .business-name { font-size: 24px; font-weight: bold; color: #3b82f6; }
@@ -161,27 +165,34 @@ export async function generatePDFBlob({ type, document: docData, client, setting
       .doc-type { font-size: 28px; font-weight: bold; text-transform: uppercase; color: ${isInvoice ? '#10b981' : '#3b82f6'}; }
       .doc-number { font-size: 14px; color: #6b7280; margin-top: 4px; }
       .doc-date { font-size: 14px; color: #6b7280; }
-      .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-bottom: 40px; }
+      .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-bottom: 24px; align-items: start; }
       .party-section h3 { font-size: 12px; text-transform: uppercase; color: #6b7280; margin-bottom: 8px; letter-spacing: 0.5px; }
       .party-name { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
       .party-details { font-size: 14px; color: #4b5563; line-height: 1.6; }
-      table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-      th { background: #f3f4f6; padding: 12px 16px; text-align: left; font-size: 12px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.5px; }
+      .right-col { font-size: 14px; color: #4b5563; line-height: 1.5; }
+      .right-col .notes-body { font-size: 14px; margin-bottom: 10px; white-space: pre-wrap; }
+      .right-col .terms-label { font-size: 11px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.5px; margin-bottom: 4px; margin-top: 8px; }
+      .right-col .terms-body { font-size: 12px; color: #6b7280; line-height: 1.5; white-space: pre-wrap; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+      th { background: #f3f4f6; padding: 10px 14px; text-align: left; font-size: 12px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.5px; }
       th:last-child { text-align: right; }
-      td { padding: 16px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
+      td { padding: 12px 14px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
       td:last-child { text-align: right; }
       .item-name { font-weight: 500; }
       .item-desc { font-size: 13px; color: #6b7280; margin-top: 2px; }
-      .totals { display: flex; justify-content: flex-end; margin-bottom: 40px; }
-      .totals-box { width: 280px; background: #f8fafc; border-radius: 8px; padding: 20px; }
-      .total-row { display: flex; justify-content: space-between; padding: 8px 0; }
-      .total-row.grand { font-size: 20px; font-weight: bold; border-top: 2px solid #e5e7eb; margin-top: 8px; padding-top: 16px; color: #1a1a2e; }
-      .amount-in-words { margin-bottom: 30px; padding: 15px; background: #fafbfc; border-radius: 8px; }
+      .totals { display: flex; justify-content: flex-end; margin-bottom: 20px; }
+      .totals-box { width: 300px; background: #f8fafc; border-radius: 8px; padding: 16px 20px; }
+      .total-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
+      .total-row.grand { font-size: 18px; font-weight: bold; border-top: 2px solid #e5e7eb; margin-top: 6px; padding-top: 12px; color: #1a1a2e; }
+      .amount-in-words { margin-bottom: 20px; padding: 12px 16px; background: #fafbfc; border-radius: 8px; }
       .amount-in-words p { font-size: 13px; color: #4b5563; line-height: 1.6; }
-      .notes-section { background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-      .notes-section h4 { font-size: 12px; text-transform: uppercase; color: #6b7280; margin-bottom: 8px; }
-      .notes-section p { font-size: 14px; color: #4b5563; line-height: 1.6; }
-      .footer { text-align: center; padding-top: 20px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #9ca3af; }
+      .notes-section { background: #f8fafc; padding: 14px 18px; border-radius: 8px; margin-bottom: 14px; }
+      .notes-section h4 { font-size: 12px; text-transform: uppercase; color: #6b7280; margin-bottom: 6px; }
+      .notes-section p { font-size: 13px; color: #4b5563; line-height: 1.6; }
+      .regards { margin-top: 32px; margin-bottom: 16px; text-align: right; font-size: 14px; color: #1a1a2e; line-height: 1.8; }
+      .regards .company { font-weight: 600; margin-top: 24px; }
+      .regards .signatory { font-size: 12px; color: #6b7280; }
+      .footer { text-align: center; padding-top: 14px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #9ca3af; }
     </style>
   `;
 
@@ -217,6 +228,17 @@ export async function generatePDFBlob({ type, document: docData, client, setting
             ${client?.address || ''}
           </div>
         </div>
+        ${(docData.notes || docData.terms) ? `
+        <div class="party-section right-col">
+          ${docData.notes ? `
+            <h3>Notes</h3>
+            <div class="notes-body">${docData.notes}</div>
+          ` : ''}
+          ${docData.terms ? `
+            <div class="terms-label">Payment Terms</div>
+            <div class="terms-body">${docData.terms}</div>
+          ` : ''}
+        </div>` : ''}
       </div>
 
       <table>
@@ -225,8 +247,8 @@ export async function generatePDFBlob({ type, document: docData, client, setting
             <th style="width: 50px;">S.No</th>
             <th>Description</th>
             <th style="width: 80px;">Qty</th>
-            <th style="width: 120px;">Rate</th>
-            <th style="width: 120px;">Amount</th>
+            <th style="width: 130px;">Rate</th>
+            <th style="width: 140px;">Amount</th>
           </tr>
         </thead>
         <tbody>
@@ -238,8 +260,8 @@ export async function generatePDFBlob({ type, document: docData, client, setting
                 ${item.description ? `<div class="item-desc">${item.description}</div>` : ''}
               </td>
               <td>${item.quantity}</td>
-              <td>${currencySymbol}${item.rate.toLocaleString('en-IN')}</td>
-              <td>${currencySymbol}${fmt(item.total || 0)}</td>
+              <td>${money(item.rate || 0)}</td>
+              <td>${money(item.total || 0)}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -249,16 +271,16 @@ export async function generatePDFBlob({ type, document: docData, client, setting
         <div class="totals-box">
           <div class="total-row">
             <span>Subtotal</span>
-            <span>${currencySymbol}${fmt(subtotal)}</span>
+            <span>${money(subtotal)}</span>
           </div>
           ${showVat ? `
           <div class="total-row">
             <span>VAT (${vatRate}%)</span>
-            <span>${currencySymbol}${fmt(vatAmount)}</span>
+            <span>${money(vatAmount)}</span>
           </div>` : ''}
           <div class="total-row grand">
             <span>${showVat ? 'Grand Total' : 'Total'}</span>
-            <span>${currencySymbol}${fmt(grandTotal)}</span>
+            <span>${money(grandTotal)}</span>
           </div>
         </div>
       </div>
@@ -266,7 +288,6 @@ export async function generatePDFBlob({ type, document: docData, client, setting
       <div class="amount-in-words">
         <p><strong>Amount in Words:</strong> ${numberToWords(grandTotal, settings.currency)}</p>
       </div>
-
 
       ${(settings.bankName || settings.bankAccountNumber) ? `
         <div class="notes-section">
@@ -278,19 +299,11 @@ export async function generatePDFBlob({ type, document: docData, client, setting
         </div>
       ` : ''}
 
-      ${docData.notes ? `
-        <div class="notes-section">
-          <h4>Notes</h4>
-          <p>${docData.notes}</p>
-        </div>
-      ` : ''}
-
-      ${docData.terms ? `
-        <div class="notes-section">
-          <h4>Terms & Conditions</h4>
-          <p>${docData.terms}</p>
-        </div>
-      ` : ''}
+      <div class="regards">
+        <div>Regards,</div>
+        <div class="company">${settings.name || 'Your Business'}</div>
+        <div class="signatory">Authorized Signatory</div>
+      </div>
 
       <div class="footer">Thank you for your business!</div>
     </div>

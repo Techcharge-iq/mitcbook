@@ -1,56 +1,73 @@
-# Fix: VAT must use the invoice-level toggle, not per-item flags
+# Invoice & Quotation PDF Layout Polish
 
-## Root cause
+All changes are confined to `src/lib/documentUtils.ts`. No calculation, VAT, header, logo, or items-table changes.
 
-`InvoiceForm` (and `PurchaseInvoiceForm`) computes VAT as `Σ item.vatAmount` where each `item.vatAmount` is only set when `item.vatApplicable === true`. New rows added via the "Add item" button default to `vatApplicable: false`, so even with the **VAT Enabled** toggle on, those rows contribute zero VAT. Same logic flows into the PDF, so the PDF shows no VAT row.
+## 1. Two-column section under header
 
-The user-visible contract is simpler: **"VAT enabled → apply 5% to the subtotal, full stop."** Per-line VAT flags are an internal detail.
+Replace the current single-column `.parties` block (Bill To only) with a two-column grid:
 
-## Fix
-
-### 1. `src/pages/InvoiceForm.tsx`
-
-Replace the per-item VAT sum with a global derivation:
-
-```ts
-const vatRate = vatEnabled ? (settings.defaultVatPercentage ?? 5) : 0;
-const subtotal = useMemo(() => items.reduce((s, i) => s + (i.total || 0), 0), [items]);
-const vatTotal = useMemo(() => +(subtotal * vatRate / 100).toFixed(3), [subtotal, vatRate]);
-const grandTotal = +(subtotal + vatTotal).toFixed(3);
+```
+┌──────────────────────────────┬──────────────────────────────┐
+│ BILL TO                      │ NOTES                        │
+│ Client name                  │ {docData.notes}              │
+│ email / phone / address      │                              │
+│                              │ PAYMENT TERMS  (smaller)     │
+│                              │ {docData.terms}              │
+└──────────────────────────────┴──────────────────────────────┘
 ```
 
-(Replaces lines 81–83. `netTotal` references in the file that refer to "subtotal" get renamed; references that meant "grand total" use `grandTotal`. No behavior change on save — `netTotal` persisted on the invoice already meant `grandTotal`.)
+- Both columns top-aligned (`align-items: start`).
+- Right column hidden cleanly when both `notes` and `terms` are empty.
+- Payment Terms label + body rendered at `font-size: 12px` (vs 14px for Notes body).
+- Remove the existing bottom `notes-section` / `terms` blocks so content is not duplicated.
+- Tighten `margin-bottom` on header (40px → 20px) and parties block (40px → 24px) to reduce whitespace.
 
-Also when saving, also persist a `vatAmount` field on the invoice so the PDF can render reliably even when the cloud round-trip drops the toggle flag.
+The `notes` field already exists on `Invoice`/`Quotation` types and on the form — no schema or form changes required. Right column simply surfaces what is already saved.
 
-### 2. `src/pages/PurchaseInvoiceForm.tsx`
+## 2. Closing "Regards" block above footer
 
-Same swap — global `subtotal × rate / 100` instead of summing item VAT.
+Insert directly above the existing `.footer`:
 
-### 3. `src/lib/documentUtils.ts`
+```
+Regards,
 
-Derive VAT identically and ignore per-item flags:
-
-```ts
-const subtotal = docData.items.reduce((s, i) => s + (i.total || 0), 0);
-const vatEnabled = (docData as any).vatEnabled !== false; // default true
-const vatRate = vatEnabled ? (settings.defaultVatPercentage ?? 5) : 0;
-const vatAmount = +(subtotal * vatRate / 100).toFixed(3);
-const grandTotal = +(subtotal + vatAmount).toFixed(3);
-const showVat = vatAmount > 0;
+{settings.name}
+Authorized Signatory
 ```
 
-The "VAT (5%)" label uses `vatRate` dynamically: `VAT (${vatRate}%)`.
+Right-aligned, ~40px top margin, signatory line in muted color.
 
-### 4. Verification
+## 3. Amount in Words — always tracks Grand Total
 
-- Add a blank invoice line, type `quantity=1`, `rate=100`, VAT toggle on, defaultVatPercentage=5 → on-screen totals: Subtotal 100, VAT 5.000, Grand Total 105.000. PDF matches.
-- Change quantity to 2.5 → Subtotal 250, VAT 12.500, Grand Total 262.500. Both screens match instantly.
-- Toggle VAT off → VAT row disappears on screen and in PDF; Total = Subtotal.
-- Toggle VAT back on → reappears with same values.
+Rewrite `numberToWords` with a clean thousands-based scale (Thousand / Million / Billion) so any value rounds correctly:
+
+- `2310.000` → `Two Thousand Three Hundred Ten Omani Rials Only`
+- `262.500`  → `Two Hundred Sixty Two Omani Rials and Five Hundred Fils Only`
+
+Called with `grandTotal` (already wired) so it stays in sync with the totals box.
+
+## 4. OMR currency formatting
+
+Add a single formatter used everywhere a money value is printed (item rate, item amount, subtotal, VAT, grand total):
+
+```ts
+const money = (n: number) =>
+  `${currencySymbol}${n.toLocaleString('en-US', {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  })}`;
+```
+
+- Produces `OMR 2,310.000` (comma thousands, 3-decimal fils).
+- Replaces the current mix of `toLocaleString('en-IN')` (which would print `2,310.000` but inconsistently) and the bare `fmt()` helper.
+- `currencySymbol` already comes from `currencySymbols[settings.currency]`; no `ر.ع` fallback is introduced.
+
+## 5. Single-page fit
+
+The multi-page slicing in `generatePDFBlob` stays as a safety net, but the layout tightening above (smaller header/parties margins, removal of duplicate bottom notes/terms blocks) keeps a typical 5–10 line invoice on one A4 page.
 
 ## Out of scope
 
-- No DB migration. The existing `vatEnabled` flag on the local invoice/quotation/purchase invoice record is the source of truth; PDF defaults to "VAT on" if the flag is missing after a cloud reload (matches the app default).
-- Per-item `vatApplicable` / `vatPercentage` / `vatAmount` fields remain on `LineItem` for backward compatibility but are no longer used to compute totals.
-- No UI redesign — only the totals math and the PDF totals block change.
+- No changes to `InvoiceForm` / `PurchaseInvoiceForm` / `QuotationForm`.
+- No changes to VAT math, subtotal, grand total, or items table columns.
+- No new DB fields — `notes` and `terms` already persist.
