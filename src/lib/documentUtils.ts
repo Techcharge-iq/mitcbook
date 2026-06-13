@@ -157,7 +157,7 @@ export async function generatePDFBlob({ type, document: docData, client, setting
         width: 800px;
         background: #ffffff;
       }
-      .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 2px solid #e5e7eb; }
+      .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 2px solid #e5e7eb; }
       .logo-section { display: flex; align-items: center; gap: 16px; }
       .logo { width: 110px; height: 110px; object-fit: contain; }
       .business-name { font-size: 24px; font-weight: bold; color: #3b82f6; }
@@ -165,27 +165,34 @@ export async function generatePDFBlob({ type, document: docData, client, setting
       .doc-type { font-size: 28px; font-weight: bold; text-transform: uppercase; color: ${isInvoice ? '#10b981' : '#3b82f6'}; }
       .doc-number { font-size: 14px; color: #6b7280; margin-top: 4px; }
       .doc-date { font-size: 14px; color: #6b7280; }
-      .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-bottom: 40px; }
+      .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-bottom: 24px; align-items: start; }
       .party-section h3 { font-size: 12px; text-transform: uppercase; color: #6b7280; margin-bottom: 8px; letter-spacing: 0.5px; }
       .party-name { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
       .party-details { font-size: 14px; color: #4b5563; line-height: 1.6; }
-      table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-      th { background: #f3f4f6; padding: 12px 16px; text-align: left; font-size: 12px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.5px; }
+      .right-col { font-size: 14px; color: #4b5563; line-height: 1.5; }
+      .right-col .notes-body { font-size: 14px; margin-bottom: 10px; white-space: pre-wrap; }
+      .right-col .terms-label { font-size: 11px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.5px; margin-bottom: 4px; margin-top: 8px; }
+      .right-col .terms-body { font-size: 12px; color: #6b7280; line-height: 1.5; white-space: pre-wrap; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+      th { background: #f3f4f6; padding: 10px 14px; text-align: left; font-size: 12px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.5px; }
       th:last-child { text-align: right; }
-      td { padding: 16px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
+      td { padding: 12px 14px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
       td:last-child { text-align: right; }
       .item-name { font-weight: 500; }
       .item-desc { font-size: 13px; color: #6b7280; margin-top: 2px; }
-      .totals { display: flex; justify-content: flex-end; margin-bottom: 40px; }
-      .totals-box { width: 280px; background: #f8fafc; border-radius: 8px; padding: 20px; }
-      .total-row { display: flex; justify-content: space-between; padding: 8px 0; }
-      .total-row.grand { font-size: 20px; font-weight: bold; border-top: 2px solid #e5e7eb; margin-top: 8px; padding-top: 16px; color: #1a1a2e; }
-      .amount-in-words { margin-bottom: 30px; padding: 15px; background: #fafbfc; border-radius: 8px; }
+      .totals { display: flex; justify-content: flex-end; margin-bottom: 20px; }
+      .totals-box { width: 300px; background: #f8fafc; border-radius: 8px; padding: 16px 20px; }
+      .total-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
+      .total-row.grand { font-size: 18px; font-weight: bold; border-top: 2px solid #e5e7eb; margin-top: 6px; padding-top: 12px; color: #1a1a2e; }
+      .amount-in-words { margin-bottom: 20px; padding: 12px 16px; background: #fafbfc; border-radius: 8px; }
       .amount-in-words p { font-size: 13px; color: #4b5563; line-height: 1.6; }
-      .notes-section { background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-      .notes-section h4 { font-size: 12px; text-transform: uppercase; color: #6b7280; margin-bottom: 8px; }
-      .notes-section p { font-size: 14px; color: #4b5563; line-height: 1.6; }
-      .footer { text-align: center; padding-top: 20px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #9ca3af; }
+      .notes-section { background: #f8fafc; padding: 14px 18px; border-radius: 8px; margin-bottom: 14px; }
+      .notes-section h4 { font-size: 12px; text-transform: uppercase; color: #6b7280; margin-bottom: 6px; }
+      .notes-section p { font-size: 13px; color: #4b5563; line-height: 1.6; }
+      .regards { margin-top: 32px; margin-bottom: 16px; text-align: right; font-size: 14px; color: #1a1a2e; line-height: 1.8; }
+      .regards .company { font-weight: 600; margin-top: 24px; }
+      .regards .signatory { font-size: 12px; color: #6b7280; }
+      .footer { text-align: center; padding-top: 14px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #9ca3af; }
     </style>
   `;
 
