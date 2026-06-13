@@ -14,54 +14,57 @@ function numberToWords(num: number, currency: string): string {
   const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
   const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
   const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-  const scales = ['', 'Thousand', 'Lakh', 'Crore'];
+  const scales = ['', 'Thousand', 'Million', 'Billion', 'Trillion'];
 
   const isOmani = currency === 'OMR';
   const currencyUnit = isOmani ? 'Omani Rial' : 'Rupee';
   const currencyUnitPlural = isOmani ? 'Omani Rials' : 'Rupees';
+  const subUnit = isOmani ? 'Fils' : 'Paise';
+  const subUnitDivisor = isOmani ? 1000 : 100; // OMR uses 3 decimals (fils)
 
   function convertBelowThousand(n: number): string {
     if (n === 0) return '';
     if (n < 10) return ones[n];
     if (n < 20) return teens[n - 10];
     if (n < 100) {
-      const tenPlace = Math.floor(n / 10);
-      const remainder = n % 10;
-      return tens[tenPlace] + (remainder ? ' ' + ones[remainder] : '');
+      const t = Math.floor(n / 10);
+      const r = n % 10;
+      return tens[t] + (r ? ' ' + ones[r] : '');
     }
-    const hundredPlace = Math.floor(n / 100);
-    const afterHundred = n % 100;
-    return ones[hundredPlace] + ' Hundred' + (afterHundred ? ' ' + convertBelowThousand(afterHundred) : '');
+    const h = Math.floor(n / 100);
+    const rest = n % 100;
+    return ones[h] + ' Hundred' + (rest ? ' ' + convertBelowThousand(rest) : '');
   }
 
   const intPart = Math.floor(num);
-  const decimalPart = Math.round((num - intPart) * 100);
-
-  if (intPart === 0) {
-    return `Zero ${currencyUnitPlural} Only`;
-  }
+  const decimalPart = Math.round((num - intPart) * subUnitDivisor);
 
   let result = '';
-  let scaleIndex = 0;
-  let temp = intPart;
-
-  while (temp > 0) {
-    const chunk = temp % (scaleIndex === 0 ? 1000 : scaleIndex === 1 ? 1000 : 10000000);
-    if (chunk !== 0) {
-      result = convertBelowThousand(chunk) + (scales[scaleIndex] ? ' ' + scales[scaleIndex] : '') + ' ' + result;
+  if (intPart === 0) {
+    result = 'Zero';
+  } else {
+    let temp = intPart;
+    let scaleIndex = 0;
+    const parts: string[] = [];
+    while (temp > 0) {
+      const chunk = temp % 1000;
+      if (chunk !== 0) {
+        const chunkWords = convertBelowThousand(chunk) + (scales[scaleIndex] ? ' ' + scales[scaleIndex] : '');
+        parts.unshift(chunkWords);
+      }
+      temp = Math.floor(temp / 1000);
+      scaleIndex++;
     }
-    temp = Math.floor(temp / (scaleIndex === 0 ? 1000 : scaleIndex === 1 ? 1000 : 10000000));
-    scaleIndex++;
+    result = parts.join(' ');
   }
 
-  result = result.trim() + ' ' + (intPart === 1 ? currencyUnit : currencyUnitPlural);
+  result += ' ' + (intPart === 1 ? currencyUnit : currencyUnitPlural);
 
   if (decimalPart > 0) {
-    result += ' and ' + convertBelowThousand(decimalPart) + ' Fils';
+    result += ' and ' + convertBelowThousand(decimalPart) + ' ' + subUnit;
   }
 
-  result += ' Only';
-  return result;
+  return result + ' Only';
 }
 
 // ---------------- FIXED FUNCTION ----------------
