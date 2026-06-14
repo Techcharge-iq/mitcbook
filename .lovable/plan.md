@@ -1,73 +1,110 @@
-# Invoice & Quotation PDF Layout Polish
+# Items Management — Goods & Services
 
-All changes are confined to `src/lib/documentUtils.ts`. No calculation, VAT, header, logo, or items-table changes.
+Rework the existing Items page into a two-tab module (Goods, Services), add stock movement tracking, and ensure the Unit is shown next to Quantity everywhere items appear.
 
-## 1. Two-column section under header
+## 1. Data model (`src/types/index.ts`)
 
-Replace the current single-column `.parties` block (Bill To only) with a two-column grid:
+Extend `Item`:
+- `kind: 'goods' | 'services'` (default `'goods'`)
+- `code?: string` (Item / Service Code, auto-generated `GD-0001` / `SV-0001` if blank)
+- `category?: string` (Goods only)
+- `minStock?: number` (replaces `reorderLevel` semantically; keep `reorderLevel` as alias for back-compat)
+- `active: boolean` (Status — default `true`)
 
-```
-┌──────────────────────────────┬──────────────────────────────┐
-│ BILL TO                      │ NOTES                        │
-│ Client name                  │ {docData.notes}              │
-│ email / phone / address      │                              │
-│                              │ PAYMENT TERMS  (smaller)     │
-│                              │ {docData.terms}              │
-└──────────────────────────────┴──────────────────────────────┘
-```
+Services derive from `kind === 'services'`: `stock`, `cost`, `minStock`, `category` are ignored/hidden.
 
-- Both columns top-aligned (`align-items: start`).
-- Right column hidden cleanly when both `notes` and `terms` are empty.
-- Payment Terms label + body rendered at `font-size: 12px` (vs 14px for Notes body).
-- Remove the existing bottom `notes-section` / `terms` blocks so content is not duplicated.
-- Tighten `margin-bottom` on header (40px → 20px) and parties block (40px → 24px) to reduce whitespace.
+Migration: any existing item without `kind` is treated as `goods`, `active = true`.
 
-The `notes` field already exists on `Invoice`/`Quotation` types and on the form — no schema or form changes required. Right column simply surfaces what is already saved.
+## 2. Stock movements (derived, no new table)
 
-## 2. Closing "Regards" block above footer
+Stock history per Goods item is computed on demand from existing data:
 
-Insert directly above the existing `.footer`:
+| Source | Type | Sign |
+|---|---|---|
+| `PurchaseInvoice.items[]` | Purchased | + qty |
+| `Invoice.items[]` | Sold | − qty |
+| Manual stock adjustment (new voucher-lite, optional) | Adjusted | ± qty |
 
-```
-Regards,
+Current stock = `openingStock + Σ purchased − Σ sold + Σ adjustments`. Negative values are allowed and shown in red. Inventory valuation = `currentStock × cost`.
 
-{settings.name}
-Authorized Signatory
-```
-
-Right-aligned, ~40px top margin, signatory line in muted color.
-
-## 3. Amount in Words — always tracks Grand Total
-
-Rewrite `numberToWords` with a clean thousands-based scale (Thousand / Million / Billion) so any value rounds correctly:
-
-- `2310.000` → `Two Thousand Three Hundred Ten Omani Rials Only`
-- `262.500`  → `Two Hundred Sixty Two Omani Rials and Five Hundred Fils Only`
-
-Called with `grandTotal` (already wired) so it stays in sync with the totals box.
-
-## 4. OMR currency formatting
-
-Add a single formatter used everywhere a money value is printed (item rate, item amount, subtotal, VAT, grand total):
-
+Helper in new file `src/lib/stockLedger.ts`:
 ```ts
-const money = (n: number) =>
-  `${currencySymbol}${n.toLocaleString('en-US', {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  })}`;
+getMovements(itemId, { invoices, purchases }): Movement[]
+getStockBalance(item, movements): number
+getInventoryValuation(item, movements): number
 ```
 
-- Produces `OMR 2,310.000` (comma thousands, 3-decimal fils).
-- Replaces the current mix of `toLocaleString('en-IN')` (which would print `2,310.000` but inconsistently) and the bare `fmt()` helper.
-- `currencySymbol` already comes from `currencySymbols[settings.currency]`; no `ر.ع` fallback is introduced.
+## 3. Items page (`src/pages/ItemsList.tsx`) — full rewrite
 
-## 5. Single-page fit
+Layout:
+- Header: title + "New Goods" / "New Service" buttons (context-aware to active tab)
+- `Tabs` with two triggers: **Goods**, **Services**
+- Per-tab: search input, filter chip (Active/Inactive/All), totals strip
 
-The multi-page slicing in `generatePDFBlob` stays as a safety net, but the layout tightening above (smaller header/parties margins, removal of duplicate bottom notes/terms blocks) keeps a typical 5–10 line invoice on one A4 page.
+### Goods tab
+Table columns: Code · Name · Category · Unit · Cost · Price · Stock · Min · Status · Actions
+- Stock cell red when `< minStock` or negative
+- Row click → side sheet with:
+  - Edit form (all goods fields)
+  - **Movements** sub-tab: chronological list (date, ref no, type badge, qty in/out, running balance)
+  - Totals: Total Purchased, Total Sold, Current Stock, Inventory Value
 
-## Out of scope
+### Services tab
+Table columns: Code · Name · Unit · Price · Status · Actions
+- Row click → side sheet:
+  - Edit form (service fields only)
+  - **Usage** sub-tab: list of quotations/invoices using this service with totals
+  - Totals: Times Used, Total Sales Value
 
-- No changes to `InvoiceForm` / `PurchaseInvoiceForm` / `QuotationForm`.
-- No changes to VAT math, subtotal, grand total, or items table columns.
-- No new DB fields — `notes` and `terms` already persist.
+### Forms
+- Goods form: Code (auto), Name, Category, Unit (combobox: PCS/KG/BOX/LTR/MTR/SET/+custom), Cost, Price, Opening Stock, Min Stock, VAT toggle/%, Active
+- Service form: Code (auto), Name, Unit (combobox: Job/Hour/Visit/Service/Day/+custom), Price, VAT toggle/%, Active
+
+## 4. Unit visibility in transactions
+
+Quotations, Sales Invoices, Purchase Bills already render line items via `ItemPicker`. Update line rows so a read-only **Unit** cell sits between Qty and Rate, populated from the selected item:
+
+```
+[Item] [Description] [Qty] [Unit] [Rate] [Amount]
+```
+
+Files touched:
+- `src/pages/QuotationForm.tsx`
+- `src/pages/InvoiceForm.tsx`
+- `src/pages/PurchaseInvoiceForm.tsx`
+- `src/lib/documentUtils.ts` — add Unit column to the PDF items table (Qty | Unit | Rate | Amount)
+
+Inactive items are filtered out of `ItemPicker` results; Services skip the "stock" hint.
+
+## 5. ItemPicker (`src/components/ItemPicker.tsx`)
+
+- Two grouped sections in the dropdown: **Goods** and **Services**
+- Show `unit` next to each option
+- Quick-add modal: kind selector (Goods/Service) toggles which fields appear
+- Hide inactive items
+
+## 6. Reports / consistency
+
+- `src/pages/reports/ItemReport.tsx`: split into Goods (qty + value) and Services (usage + sales value) sections, using the new movement helpers.
+- Stock balance shown anywhere uses `getStockBalance` so negatives appear consistently.
+
+## 7. Out of scope
+
+- No DB/schema changes; items remain in `useApp` local/cloud collection.
+- No changes to VAT math, totals, or PDF header/footer beyond adding the Unit column.
+- Stock adjustment voucher is optional; movements page works with purchases+sales alone.
+
+## Files changed/added
+
+Added:
+- `src/lib/stockLedger.ts`
+
+Modified:
+- `src/types/index.ts`
+- `src/pages/ItemsList.tsx` (full rewrite)
+- `src/components/ItemPicker.tsx`
+- `src/pages/QuotationForm.tsx`
+- `src/pages/InvoiceForm.tsx`
+- `src/pages/PurchaseInvoiceForm.tsx`
+- `src/lib/documentUtils.ts`
+- `src/pages/reports/ItemReport.tsx`

@@ -21,6 +21,7 @@ export interface LineItem {
   itemId?: string;
   name: string;
   description: string;
+  unit?: string;
   quantity: number;
   rate: number;
   total: number;
@@ -33,8 +34,13 @@ export interface LineItem {
 }
 
 // Item master
+export type ItemKind = 'goods' | 'services';
+
 export interface Item {
   id: string;
+  kind?: ItemKind; // defaults to 'goods' for legacy items
+  code?: string;
+  category?: string;
   name: string;
   description?: string;
   unit?: string;
@@ -42,6 +48,8 @@ export interface Item {
   cost?: number;
   stock: number;
   reorderLevel?: number;
+  minStock?: number;
+  active?: boolean; // defaults to true
   vatApplicable: boolean;
   vatPercentage: number;
   createdAt: string;
