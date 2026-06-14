@@ -244,11 +244,12 @@ export async function generatePDFBlob({ type, document: docData, client, setting
       <table>
         <thead>
           <tr>
-            <th style="width: 50px;">S.No</th>
+            <th style="width: 40px;">S.No</th>
             <th>Description</th>
-            <th style="width: 80px;">Qty</th>
-            <th style="width: 130px;">Rate</th>
-            <th style="width: 140px;">Amount</th>
+            <th style="width: 60px;">Qty</th>
+            <th style="width: 70px;">Unit</th>
+            <th style="width: 110px;">Rate</th>
+            <th style="width: 120px;">Amount</th>
           </tr>
         </thead>
         <tbody>
@@ -260,6 +261,7 @@ export async function generatePDFBlob({ type, document: docData, client, setting
                 ${item.description ? `<div class="item-desc">${item.description}</div>` : ''}
               </td>
               <td>${item.quantity}</td>
+              <td>${item.unit ?? ''}</td>
               <td>${money(item.rate || 0)}</td>
               <td>${money(item.total || 0)}</td>
             </tr>

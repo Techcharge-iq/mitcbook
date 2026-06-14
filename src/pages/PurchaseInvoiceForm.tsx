@@ -75,7 +75,7 @@ export default function PurchaseInvoiceForm() {
     });
   };
 
-  const selectItemForRow = (index: number, picked: { id: string; name: string; description?: string; rate: number; cost?: number; vatApplicable: boolean; vatPercentage: number; }) => {
+  const selectItemForRow = (index: number, picked: { id: string; name: string; description?: string; unit?: string; rate: number; cost?: number; vatApplicable: boolean; vatPercentage: number; }) => {
     setItems((prev) => {
       const updated = [...prev];
       const cur = updated[index];
@@ -88,6 +88,7 @@ export default function PurchaseInvoiceForm() {
         itemId: picked.id,
         name: picked.name,
         description: picked.description ?? cur.description,
+        unit: picked.unit ?? cur.unit,
         rate,
         total,
         vatApplicable: picked.vatApplicable,
@@ -266,7 +267,7 @@ export default function PurchaseInvoiceForm() {
         <CardContent className="px-3 pb-3">
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="border-b text-xs text-muted-foreground"><th className="text-left py-2 w-8">#</th><th className="text-left py-2">Item</th><th className="text-left py-2">Description</th><th className="text-right py-2 w-20">Qty</th><th className="text-right py-2 w-24">Rate</th><th className="text-right py-2 w-24">Total</th><th className="w-8"></th></tr></thead>
+              <thead><tr className="border-b text-xs text-muted-foreground"><th className="text-left py-2 w-8">#</th><th className="text-left py-2">Item</th><th className="text-left py-2">Description</th><th className="text-right py-2 w-20">Qty</th><th className="text-left py-2 w-20">Unit</th><th className="text-right py-2 w-24">Rate</th><th className="text-right py-2 w-24">Total</th><th className="w-8"></th></tr></thead>
               <tbody>
                 {items.map((item, index) => (
                   <tr key={item.id} className="border-b last:border-0">
@@ -280,6 +281,7 @@ export default function PurchaseInvoiceForm() {
                     </td>
                     <td className="py-2"><Input value={item.description} onChange={(e) => updateItem(index, 'description', e.target.value)} placeholder="Description" className="h-8" /></td>
                     <td className="py-2"><Input type="number" min="1" value={item.quantity} onChange={(e) => updateItem(index, 'quantity', e.target.value)} className="h-8 text-right" /></td>
+                    <td className="py-2"><Input value={item.unit ?? ''} onChange={(e) => updateItem(index, 'unit', e.target.value)} placeholder="—" className="h-8" /></td>
                     <td className="py-2"><Input type="number" min="0" step="0.01" value={item.rate} onChange={(e) => updateItem(index, 'rate', e.target.value)} className="h-8 text-right" /></td>
                     <td className="py-2 text-right font-medium">{currencySymbol}{item.total.toLocaleString('en-IN')}</td>
                     <td className="py-2"><Button type="button" variant="ghost" size="icon" onClick={() => removeItem(index)} className="h-7 w-7"><Trash2 className="h-3.5 w-3.5" /></Button></td>
