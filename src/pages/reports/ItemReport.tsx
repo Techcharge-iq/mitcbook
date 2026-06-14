@@ -15,6 +15,7 @@ import { useNavigate } from 'react-router-dom';
 interface ItemRow {
   itemId: string;
   name: string;
+  kind: 'goods' | 'services';
   unit?: string;
   opening: number;
   purchasedQty: number;
@@ -82,6 +83,7 @@ export default function ItemReport() {
       return {
         itemId: item.id,
         name: item.name,
+        kind: (item.kind ?? 'goods') as 'goods' | 'services',
         unit: item.unit,
         opening: item.stock - purchasedQty + soldQty,
         purchasedQty,
@@ -198,11 +200,14 @@ export default function ItemReport() {
                 <tbody>
                   {rows.map((r) => (
                     <tr key={r.itemId} className="border-b last:border-0 hover:bg-muted/30 cursor-pointer" onClick={() => setDrillItem(r)}>
-                      <td className="py-2 font-medium">{r.name}</td>
-                      <td className="py-2 text-right">{r.opening}</td>
-                      <td className="py-2 text-right text-success">+{r.purchasedQty}</td>
-                      <td className="py-2 text-right text-destructive">-{r.soldQty}</td>
-                      <td className="py-2 text-right font-semibold">{r.closing}</td>
+                      <td className="py-2 font-medium">
+                        <Badge variant="outline" className="mr-1.5 text-[9px]">{r.kind === 'goods' ? 'G' : 'S'}</Badge>
+                        {r.name}
+                      </td>
+                      <td className="py-2 text-right">{r.kind === 'goods' ? r.opening : '—'}</td>
+                      <td className="py-2 text-right text-success">{r.kind === 'goods' ? `+${r.purchasedQty}` : '—'}</td>
+                      <td className="py-2 text-right text-destructive">{r.kind === 'goods' ? `-${r.soldQty}` : `${r.soldQty}`}</td>
+                      <td className={`py-2 text-right font-semibold ${r.closing < 0 ? 'text-destructive' : ''}`}>{r.kind === 'goods' ? r.closing : '—'}</td>
                       <td className="py-2 text-right hidden md:table-cell">{currencySymbol}{r.salesValue.toLocaleString('en-IN')}</td>
                       <td className="py-2 text-right hidden md:table-cell">{currencySymbol}{r.purchaseValue.toLocaleString('en-IN')}</td>
                       <td className="py-2 text-right hidden lg:table-cell">{currencySymbol}{r.vatCollected.toLocaleString('en-IN')}</td>
