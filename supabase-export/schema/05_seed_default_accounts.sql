@@ -1,0 +1,4 @@
+-- Intentionally empty.
+-- Default chart of accounts is seeded by the app on first load (per user/company)
+-- from src/types/index.ts (DEFAULT_ACCOUNTS). Add manual seeds here if you want
+-- them server-side instead.

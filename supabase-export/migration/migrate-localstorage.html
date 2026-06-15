@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>BookIt → Supabase migration</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    body { max-width: 720px; margin: 32px auto; padding: 0 16px; line-height: 1.5; }
+    h1 { margin-top: 0; }
+    fieldset { border: 1px solid #8884; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+    legend { padding: 0 6px; font-weight: 600; }
+    label { display: block; margin: 8px 0 4px; font-size: 14px; }
+    input { width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid #8886; font: inherit; box-sizing: border-box; }
+    button { padding: 8px 14px; border-radius: 6px; border: 1px solid #8886; background: #2563eb; color: white; font: inherit; cursor: pointer; }
+    button.secondary { background: transparent; color: inherit; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .row { display: flex; gap: 8px; }
+    .row > * { flex: 1; }
+    pre { background: #1112; padding: 12px; border-radius: 8px; max-height: 360px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+    .ok { color: #16a34a; }
+    .err { color: #dc2626; }
+    .muted { color: #6b7280; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>Migrate localStorage → Supabase</h1>
+  <p class="muted">
+    Run this page in the same browser that holds the old <code>app_*</code> data.
+    Sign in with the account that should own the data, then click Migrate.
+    Re-running is safe — rows upsert by <code>id</code>.
+  </p>
+
+  <fieldset>
+    <legend>1. Supabase project</legend>
+    <label>Project URL</label>
+    <input id="url" value="https://znevekusyqrtvedjstpo.supabase.co" />
+    <label>Anon / publishable key</label>
+    <input id="key" value="sb_publishable__GMq5z89VoGzYUFurO39Bg_iPSwXrt8" />
+    <div style="margin-top:10px">
+      <button id="initBtn">Connect</button>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>2. Sign in</legend>
+    <div class="row">
+      <div>
+        <label>Email</label>
+        <input id="email" type="email" autocomplete="username" />
+      </div>
+      <div>
+        <label>Password</label>
+        <input id="password" type="password" autocomplete="current-password" />
+      </div>
+    </div>
+    <div style="margin-top:10px; display:flex; gap:8px;">
+      <button id="signInBtn" disabled>Sign in</button>
+      <button id="signUpBtn" class="secondary" disabled>Sign up</button>
+      <span id="who" class="muted" style="align-self:center"></span>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>3. Migrate</legend>
+    <p class="muted">
+      Scans <code>localStorage</code> for keys of the form
+      <code>app_&lt;collection&gt;_&lt;companyId&gt;</code> across every supported
+      collection. Each row gets stamped with your <code>user_id</code> and the
+      <code>company_id</code> from the key suffix.
+    </p>
+    <button id="migrateBtn" disabled>Migrate now</button>
+    <pre id="log">(no run yet)</pre>
+  </fieldset>
+
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+    // collection name (in localStorage key) -> { table, cols: { camel: snake } }
+    const baseCols = (extra = {}) => ({ id: 'id', createdAt: 'created_at', updatedAt: 'updated_at', ...extra });
+    const MAP = {
+      clients: { table: 'clients', cols: baseCols({
+        name: 'name', email: 'email', phone: 'phone', address: 'address', type: 'type',
+        paymentTermsDays: 'payment_terms_days', taxRegistrationNumber: 'tax_registration_number',
+        creditLimit: 'credit_limit',
+      }) },
+      quotations: { table: 'quotations', cols: baseCols({
+        number: 'number', clientId: 'client_id', salesmanId: 'salesman_id', items: 'items',
+        netTotal: 'net_total', status: 'status', convertedInvoiceId: 'converted_invoice_id',
+        notes: 'notes', terms: 'terms',
+      }) },
+      invoices: { table: 'invoices', cols: baseCols({
+        number: 'number', clientId: 'client_id', salesmanId: 'salesman_id', quotationId: 'quotation_id',
+        invoiceType: 'invoice_type', projectId: 'project_id', projectSummary: 'project_summary',
+        items: 'items', netTotal: 'net_total', status: 'status', invoiceDate: 'invoice_date',
+        dueDate: 'due_date', notes: 'notes', terms: 'terms',
+      }) },
+      projects: { table: 'projects', cols: baseCols({
+        name: 'name', customerId: 'vendor_id', totalValue: 'total_value', lpoNumber: 'lpo_number',
+        startDate: 'start_date', endDate: 'end_date', status: 'status', activities: 'activities',
+      }) },
+      purchase_invoices: { table: 'purchase_invoices', cols: baseCols({
+        number: 'number', vendorId: 'vendor_id', items: 'items', netTotal: 'net_total',
+        status: 'status', invoiceDate: 'invoice_date', dueDate: 'due_date', notes: 'notes', terms: 'terms',
+      }) },
+      payments: { table: 'payments', cols: baseCols({
+        invoiceId: 'invoice_id', invoiceType: 'invoice_type', amount: 'amount', date: 'date',
+        method: 'method', reference: 'reference', notes: 'notes',
+      }) },
+      accounts: { table: 'accounts', cols: baseCols({
+        code: 'code', name: 'name', type: 'type', kind: 'kind', parentId: 'parent_id', isSystem: 'is_system',
+      }) },
+      journal_entries: { table: 'journal_entries', cols: baseCols({
+        date: 'date', reference: 'reference', referenceType: 'reference_type', referenceId: 'reference_id',
+        description: 'description', lines: 'lines', idempotencyKey: 'idempotency_key', reversalOf: 'reversal_of',
+      }) },
+      vouchers: { table: 'vouchers', cols: baseCols({
+        number: 'number', type: 'type', date: 'date', partyName: 'party_name', amount: 'amount',
+        narration: 'narration', method: 'method', reference: 'reference', details: 'details',
+      }) },
+      items: { table: 'items', cols: baseCols({
+        name: 'name', description: 'description', unit: 'unit', rate: 'rate', cost: 'cost',
+        stock: 'stock', reorderLevel: 'reorder_level', vatApplicable: 'vat_applicable',
+        vatPercentage: 'vat_percentage', kind: 'kind', code: 'code', category: 'category',
+        minStock: 'min_stock', active: 'active',
+      }) },
+      salesmen: { table: 'salesmen', cols: baseCols({ name: 'name', phone: 'phone' }) },
+      audit_log: { table: 'audit_log', cols: baseCols({
+        type: 'type', action: 'action', target: 'target', details: 'details', value: 'value',
+      }) },
+    };
+
+    // Singletons that don't share the per-row shape:
+    //   app_companies            -> companies (no company_id col)
+    //   app_settings_<companyId> -> business_settings (unique on user_id+company_id)
+    //   app_account_balances_<companyId> -> account_balances (one row per accountId)
+
+    const $ = (id) => document.getElementById(id);
+    const log = (msg, cls = '') => {
+      const el = $('log');
+      const line = cls ? `<span class="${cls}">${msg}</span>` : msg;
+      el.innerHTML = (el.innerHTML === '(no run yet)' ? '' : el.innerHTML) + line + '\n';
+      el.scrollTop = el.scrollHeight;
+    };
+
+    let supabase = null;
+    let userId = null;
+
+    $('initBtn').onclick = () => {
+      supabase = createClient($('url').value.trim(), $('key').value.trim(), {
+        auth: { persistSession: true, autoRefreshToken: true },
+      });
+      $('signInBtn').disabled = false;
+      $('signUpBtn').disabled = false;
+      log('Connected to ' + $('url').value, 'ok');
+      supabase.auth.getSession().then(({ data }) => {
+        if (data.session) onAuthed(data.session.user);
+      });
+    };
+
+    function onAuthed(user) {
+      userId = user.id;
+      $('who').textContent = 'Signed in as ' + (user.email || user.id);
+      $('migrateBtn').disabled = false;
+    }
+
+    $('signInBtn').onclick = async () => {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: $('email').value, password: $('password').value,
+      });
+      if (error) return log('Sign in failed: ' + error.message, 'err');
+      onAuthed(data.user);
+      log('Signed in', 'ok');
+    };
+
+    $('signUpBtn').onclick = async () => {
+      const { data, error } = await supabase.auth.signUp({
+        email: $('email').value, password: $('password').value,
+      });
+      if (error) return log('Sign up failed: ' + error.message, 'err');
+      if (data.session) onAuthed(data.user);
+      log('Signed up' + (data.session ? '' : ' — check your inbox to confirm.'), 'ok');
+    };
+
+    function toRow(meta, obj) {
+      const out = {};
+      for (const [camel, snake] of Object.entries(meta.cols)) {
+        if (obj[camel] !== undefined) out[snake] = obj[camel];
+      }
+      return out;
+    }
+
+    async function upsertBatch(table, rows) {
+      if (!rows.length) return { ok: 0, err: 0 };
+      const { error } = await supabase.from(table).upsert(rows, { onConflict: 'id' });
+      if (error) { log(`  ✗ ${table}: ${error.message}`, 'err'); return { ok: 0, err: rows.length }; }
+      return { ok: rows.length, err: 0 };
+    }
+
+    $('migrateBtn').onclick = async () => {
+      $('migrateBtn').disabled = true;
+      $('log').innerHTML = '';
+      log('Starting migration for user ' + userId);
+
+      const keys = Object.keys(localStorage);
+
+      // 1) Per-collection arrays: app_<collection>_<companyId>
+      for (const [coll, meta] of Object.entries(MAP)) {
+        const matching = keys.filter((k) => k.startsWith(`app_${coll}_`));
+        let total = 0, errs = 0;
+        for (const k of matching) {
+          const companyId = k.slice(`app_${coll}_`.length);
+          let parsed;
+          try { parsed = JSON.parse(localStorage.getItem(k) || '[]'); } catch { continue; }
+          if (!Array.isArray(parsed) || !parsed.length) continue;
+          const rows = parsed.map((r) => {
+            const row = toRow(meta, r);
+            row.user_id = userId;
+            if (coll !== 'audit_log') row.company_id = companyId; // audit_log has it too
+            else row.company_id = companyId;
+            return row;
+          });
+          const { ok, err } = await upsertBatch(meta.table, rows);
+          total += ok; errs += err;
+        }
+        if (total || errs) log(`  ${coll}: ${total} ok, ${errs} err`, errs ? 'err' : 'ok');
+      }
+
+      // 2) companies (singleton list, no per-company suffix)
+      try {
+        const raw = localStorage.getItem('app_companies');
+        if (raw) {
+          const list = JSON.parse(raw);
+          if (Array.isArray(list) && list.length) {
+            const rows = list.map((c) => ({
+              id: c.id && /^[0-9a-f-]{36}$/i.test(c.id) ? c.id : undefined,
+              user_id: userId,
+              name: c.name,
+            }));
+            // companies uses uuid PK — if local id isn't a uuid, let DB generate one
+            for (const r of rows) if (!r.id) delete r.id;
+            const { error } = await supabase.from('companies').upsert(rows, { onConflict: 'id' });
+            if (error) log('  ✗ companies: ' + error.message, 'err');
+            else log(`  companies: ${rows.length} ok`, 'ok');
+          }
+        }
+      } catch (e) { log('  ✗ companies: ' + e.message, 'err'); }
+
+      // 3) business_settings (per company)
+      for (const k of keys.filter((k) => k.startsWith('app_settings_'))) {
+        try {
+          const companyId = k.slice('app_settings_'.length);
+          const s = JSON.parse(localStorage.getItem(k) || '{}');
+          if (!s || typeof s !== 'object') continue;
+          const payload = {
+            user_id: userId, company_id: companyId,
+            name: s.name, email: s.email, phone: s.phone, address: s.address, logo: s.logo,
+            currency: s.currency, tax_number: s.taxNumber, theme: s.theme,
+            vat_enabled: s.vatEnabled ?? true,
+            default_vat_percentage: s.defaultVatPercentage ?? 5,
+            bank_name: s.bankName, bank_account_number: s.bankAccountNumber, signature: s.signature,
+          };
+          const { error } = await supabase.from('business_settings').upsert(payload, { onConflict: 'user_id,company_id' });
+          if (error) log(`  ✗ business_settings[${companyId}]: ${error.message}`, 'err');
+          else log(`  business_settings[${companyId}]: ok`, 'ok');
+        } catch (e) { log('  ✗ business_settings: ' + e.message, 'err'); }
+      }
+
+      // 4) account_balances (per company; object map accountId -> balance)
+      for (const k of keys.filter((k) => k.startsWith('app_account_balances_'))) {
+        try {
+          const companyId = k.slice('app_account_balances_'.length);
+          const map = JSON.parse(localStorage.getItem(k) || '{}');
+          const rows = Object.entries(map).map(([accountId, balance]) => ({
+            user_id: userId, company_id: companyId, account_id: accountId, balance: Number(balance) || 0,
+          }));
+          if (!rows.length) continue;
+          const { error } = await supabase.from('account_balances').upsert(rows, { onConflict: 'user_id,company_id,account_id' });
+          if (error) log(`  ✗ account_balances[${companyId}]: ${error.message}`, 'err');
+          else log(`  account_balances[${companyId}]: ${rows.length} ok`, 'ok');
+        } catch (e) { log('  ✗ account_balances: ' + e.message, 'err'); }
+      }
+
+      log('Done.', 'ok');
+      $('migrateBtn').disabled = false;
+    };
+  </script>
+</body>
+</html>

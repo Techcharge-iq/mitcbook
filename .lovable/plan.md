@@ -1,110 +1,85 @@
-# Items Management — Goods & Services
+## Goal
 
-Rework the existing Items page into a two-tab module (Goods, Services), add stock movement tracking, and ensure the Unit is shown next to Quantity everywhere items appear.
+Generate a portable, self-contained `supabase-export/` bundle in this repo so you can run your app against your own Supabase project (`znevekusyqrtvedjstpo`). The live Lovable preview will keep using Lovable Cloud — these are files you take with you to your own deployment.
 
-## 1. Data model (`src/types/index.ts`)
+> Heads up I already gave you: I cannot point this Lovable project at your external Supabase. Lovable Cloud cannot be disconnected from this project, and `src/integrations/supabase/client.ts` / the Supabase env vars are auto-generated and off-limits. This plan only produces files. To actually run against your external project you'll fork/self-host the app and override the two env vars.
 
-Extend `Item`:
-- `kind: 'goods' | 'services'` (default `'goods'`)
-- `code?: string` (Item / Service Code, auto-generated `GD-0001` / `SV-0001` if blank)
-- `category?: string` (Goods only)
-- `minStock?: number` (replaces `reorderLevel` semantically; keep `reorderLevel` as alias for back-compat)
-- `active: boolean` (Status — default `true`)
-
-Services derive from `kind === 'services'`: `stock`, `cost`, `minStock`, `category` are ignored/hidden.
-
-Migration: any existing item without `kind` is treated as `goods`, `active = true`.
-
-## 2. Stock movements (derived, no new table)
-
-Stock history per Goods item is computed on demand from existing data:
-
-| Source | Type | Sign |
-|---|---|---|
-| `PurchaseInvoice.items[]` | Purchased | + qty |
-| `Invoice.items[]` | Sold | − qty |
-| Manual stock adjustment (new voucher-lite, optional) | Adjusted | ± qty |
-
-Current stock = `openingStock + Σ purchased − Σ sold + Σ adjustments`. Negative values are allowed and shown in red. Inventory valuation = `currentStock × cost`.
-
-Helper in new file `src/lib/stockLedger.ts`:
-```ts
-getMovements(itemId, { invoices, purchases }): Movement[]
-getStockBalance(item, movements): number
-getInventoryValuation(item, movements): number
-```
-
-## 3. Items page (`src/pages/ItemsList.tsx`) — full rewrite
-
-Layout:
-- Header: title + "New Goods" / "New Service" buttons (context-aware to active tab)
-- `Tabs` with two triggers: **Goods**, **Services**
-- Per-tab: search input, filter chip (Active/Inactive/All), totals strip
-
-### Goods tab
-Table columns: Code · Name · Category · Unit · Cost · Price · Stock · Min · Status · Actions
-- Stock cell red when `< minStock` or negative
-- Row click → side sheet with:
-  - Edit form (all goods fields)
-  - **Movements** sub-tab: chronological list (date, ref no, type badge, qty in/out, running balance)
-  - Totals: Total Purchased, Total Sold, Current Stock, Inventory Value
-
-### Services tab
-Table columns: Code · Name · Unit · Price · Status · Actions
-- Row click → side sheet:
-  - Edit form (service fields only)
-  - **Usage** sub-tab: list of quotations/invoices using this service with totals
-  - Totals: Times Used, Total Sales Value
-
-### Forms
-- Goods form: Code (auto), Name, Category, Unit (combobox: PCS/KG/BOX/LTR/MTR/SET/+custom), Cost, Price, Opening Stock, Min Stock, VAT toggle/%, Active
-- Service form: Code (auto), Name, Unit (combobox: Job/Hour/Visit/Service/Day/+custom), Price, VAT toggle/%, Active
-
-## 4. Unit visibility in transactions
-
-Quotations, Sales Invoices, Purchase Bills already render line items via `ItemPicker`. Update line rows so a read-only **Unit** cell sits between Qty and Rate, populated from the selected item:
+## What gets created
 
 ```
-[Item] [Description] [Qty] [Unit] [Rate] [Amount]
+supabase-export/
+  README.md                      # step-by-step: run SQL, configure auth, swap env vars
+  schema/
+    00_extensions.sql            # pgcrypto, uuid-ossp
+    01_enums.sql                 # app_role enum
+    02_tables.sql                # all tables below, with GRANTs
+    03_functions_triggers.sql    # has_role, update_updated_at_column, handle_new_user
+    04_rls_policies.sql          # per-table RLS, user-scoped
+    05_seed_default_accounts.sql # optional: not seeded; accounts auto-created per user from app
+  migration/
+    migrate-localstorage.ts      # browser script: reads app_* keys, upserts to Supabase
+    migrate-localstorage.html    # tiny page that runs the script with your URL/anon key
+  .env.example                   # VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY template
 ```
 
-Files touched:
-- `src/pages/QuotationForm.tsx`
-- `src/pages/InvoiceForm.tsx`
-- `src/pages/PurchaseInvoiceForm.tsx`
-- `src/lib/documentUtils.ts` — add Unit column to the PDF items table (Qty | Unit | Rate | Amount)
+## Schema (mirrors what `cloudSync.ts` already maps)
 
-Inactive items are filtered out of `ItemPicker` results; Services skip the "stock" hint.
+All user-scoped tables share: `id uuid pk default gen_random_uuid()`, `user_id uuid not null references auth.users(id) on delete cascade`, `company_id text not null default 'default'`, `created_at`, `updated_at` (trigger-maintained).
 
-## 5. ItemPicker (`src/components/ItemPicker.tsx`)
+Tables:
+- `profiles` (user_id pk, display_name)
+- `user_roles` (user_id, role app_role) + `has_role()` security-definer
+- `companies` (name) — currently localStorage-only; promoted to cloud
+- `clients` (name, email, phone, address, type, payment_terms_days, tax_registration_number, credit_limit)
+- `items` (name, description, unit, rate, cost, stock, reorder_level, vat_applicable, vat_percentage, kind, code, category, min_stock, active)
+- `salesmen` (name, phone)
+- `projects` (name, vendor_id, total_value, lpo_number, start_date, end_date, status, activities jsonb)
+- `quotations` (number, client_id, salesman_id, items jsonb, net_total, status, converted_invoice_id, notes, terms)
+- `invoices` (number, client_id, salesman_id, quotation_id, invoice_type, project_id, project_summary jsonb, items jsonb, net_total, status, invoice_date, due_date, notes, terms)
+- `purchase_invoices` (number, vendor_id, items jsonb, net_total, status, invoice_date, due_date, notes, terms)
+- `payments` (invoice_id, invoice_type, amount, date, method, reference, notes)
+- `accounts` (code, name, type, kind, parent_id, is_system)
+- `journal_entries` (date, reference, reference_type, reference_id, description, lines jsonb, idempotency_key, reversal_of)
+- `vouchers` (number, type, date, party_name, amount, narration, method, reference, details jsonb)
+- `business_settings` (company_id, name, email, phone, address, logo, currency, tax_number, theme, vat_enabled, default_vat_percentage, bank_name, bank_account_number, signature) — unique on (user_id, company_id)
+- `account_balances` (company_id, account_id, balance) — unique on (user_id, company_id, account_id); currently localStorage-only
+- `audit_log` (company_id, type, action, target, details, value, created_at) — currently localStorage-only
 
-- Two grouped sections in the dropdown: **Goods** and **Services**
-- Show `unit` next to each option
-- Quick-add modal: kind selector (Goods/Service) toggles which fields appear
-- Hide inactive items
+Every public table gets in this exact order:
+1. `CREATE TABLE`
+2. `GRANT SELECT, INSERT, UPDATE, DELETE … TO authenticated; GRANT ALL … TO service_role;` (no `anon` — all access is per-user)
+3. `ALTER TABLE … ENABLE ROW LEVEL SECURITY`
+4. `CREATE POLICY "own rows" … USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id)` (FOR ALL)
 
-## 6. Reports / consistency
+`updated_at` trigger on every table. `handle_new_user` trigger on `auth.users` creates a `profiles` row and assigns first signup as `admin`.
 
-- `src/pages/reports/ItemReport.tsx`: split into Goods (qty + value) and Services (usage + sales value) sections, using the new movement helpers.
-- Stock balance shown anywhere uses `getStockBalance` so negatives appear consistently.
+## Local→Cloud migration script
 
-## 7. Out of scope
+`migration/migrate-localstorage.html` is a single static page you open in the browser where the old data lives. It:
+1. Asks for your Supabase URL + anon key (prefilled with the ones you sent).
+2. Prompts sign-in (email/password).
+3. Scans `localStorage` for keys matching `app_<collection>_<companyId>` for every collection above, including the localStorage-only ones (`companies`, `account_balances`, `audit_log`, `settings`).
+4. Upserts each row by `id` (so re-running is safe), stamping `user_id = auth.uid()` and `company_id` from the key suffix.
+5. Reports per-collection success/failure counts.
 
-- No DB/schema changes; items remain in `useApp` local/cloud collection.
-- No changes to VAT math, totals, or PDF header/footer beyond adding the Unit column.
-- Stock adjustment voucher is optional; movements page works with purchases+sales alone.
+No app code is touched; this script is standalone and lives only under `supabase-export/migration/`.
 
-## Files changed/added
+## README contents
 
-Added:
-- `src/lib/stockLedger.ts`
+- Create a new Supabase project (or reuse `znevekusyqrtvedjstpo`).
+- Run SQL files in order: `00_…` → `04_…`.
+- In Auth settings: enable Email provider; optionally disable email confirmation for dev.
+- Take the project's URL + anon key, put them in your deployment's `.env` as `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`.
+- Open `migration/migrate-localstorage.html` from each browser/device that has data, sign in, click Migrate.
+- Verify in Supabase Table Editor.
 
-Modified:
-- `src/types/index.ts`
-- `src/pages/ItemsList.tsx` (full rewrite)
-- `src/components/ItemPicker.tsx`
-- `src/pages/QuotationForm.tsx`
-- `src/pages/InvoiceForm.tsx`
-- `src/pages/PurchaseInvoiceForm.tsx`
-- `src/lib/documentUtils.ts`
-- `src/pages/reports/ItemReport.tsx`
+## Out of scope (explicit)
+
+- No edits to `src/`, `package.json`, `vite.config.ts`, `.env`, or anything Lovable-managed.
+- No changes to the existing Lovable Cloud schema or RLS.
+- The running Lovable preview will continue writing to Lovable Cloud, not your external project. Cross-device sync against `znevekusyqrtvedjstpo` only works once you self-host the app with swapped env vars.
+- No automatic background backup beyond what Supabase provides — `pg_dump` against Supabase is not enabled from here.
+
+## After approval
+
+I'll create the files above in one pass, then point you at `supabase-export/README.md`.
