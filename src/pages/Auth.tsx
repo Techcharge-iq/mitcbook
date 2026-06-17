@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { lovable } from '@/integrations/lovable';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,11 +16,15 @@ export default function Auth() {
   const [displayName, setDisplayName] = useState('');
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) navigate('/', { replace: true });
-    });
-  }, [navigate]);
+useEffect(() => {
+  let isMounted = true;
+  supabase.auth.getSession().then(({ data }) => {
+    if (isMounted && data.session) {
+      navigate('/', { replace: true });
+    }
+  });
+  return () => { isMounted = false; }; // This cleans up the hook
+}, [navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,18 +53,18 @@ export default function Auth() {
   };
 
   const handleGoogle = async () => {
-    setBusy(true);
-    const result = await lovable.auth.signInWithOAuth('google', {
-      redirect_uri: window.location.origin,
-    });
-    if (result.error) {
-      setBusy(false);
-      toast({ title: 'Google sign-in failed', description: String((result.error as Error).message ?? result.error), variant: 'destructive' });
-      return;
-    }
-    if (result.redirected) return;
-    navigate('/', { replace: true });
-  };
+  setBusy(true);
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.origin,
+    },
+  });
+  if (error) {
+    setBusy(false);
+    toast({ title: 'Google sign-in failed', description: error.message, variant: 'destructive' });
+  }
+};
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
