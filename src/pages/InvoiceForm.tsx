@@ -21,11 +21,10 @@ import {
 } from '@/components/ui/sheet';
 import { useToast } from '@/hooks/use-toast';
 import { currencySymbols, type Invoice, type LineItem, type InvoiceStatus, type Client } from '@/types';
-import { Plus, Trash2, Save, ArrowLeft, Send, Download, Share2, Edit2, CreditCard, Printer } from 'lucide-react';
+import { Plus, Trash2, Save, ArrowLeft, Send, Download, Share2, Edit2, CreditCard, Printer, List } from 'lucide-react';
 import { generatePDF, printDocument, shareViaWhatsApp } from '@/lib/documentUtils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ItemPicker } from '@/components/ItemPicker';
-// ✅ Import InvoicePrint component
 import { InvoicePrint } from '@/components/InvoicePrint';
 
 export default function InvoiceForm() {
@@ -71,7 +70,15 @@ export default function InvoiceForm() {
   const [invoiceNumber, setInvoiceNumber] = useState(existingInvoice?.number || generateInvoiceNumber());
   const [vatEnabled, setVatEnabled] = useState(existingInvoice?.vatEnabled ?? settings.vatEnabled ?? true);
   const [items, setItems] = useState<LineItem[]>(
-    existingInvoice?.items || sourceQuotation?.items || [{ id: crypto.randomUUID(), name: '', description: '', quantity: 1, rate: 0, total: 0 }]
+    existingInvoice?.items || sourceQuotation?.items || [{ 
+      id: crypto.randomUUID(), 
+      name: '', 
+      description: '', 
+      quantity: 1, 
+      rate: 0, 
+      total: 0,
+      itemDate: new Date().toISOString().split('T')[0] // ✅ ADD item date
+    }]
   );
 
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
@@ -80,7 +87,15 @@ export default function InvoiceForm() {
   const [newSalesman, setNewSalesman] = useState({ name: '', phone: '' });
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
   const [isAddItemSheetOpen, setIsAddItemSheetOpen] = useState(false);
-  const [tempItem, setTempItem] = useState<LineItem>({ id: '', name: '', description: '', quantity: 1, rate: 0, total: 0 });
+  const [tempItem, setTempItem] = useState<LineItem>({ 
+    id: '', 
+    name: '', 
+    description: '', 
+    quantity: 1, 
+    rate: 0, 
+    total: 0,
+    itemDate: new Date().toISOString().split('T')[0] // ✅ ADD item date
+  });
 
   const canUseManualInvoiceNumber = settings.allowManualInvoiceNumberEntry || existingInvoice?.invoiceNumberMode === 'manual';
   const netTotal = useMemo(() => items.reduce((sum, item) => sum + (item.total || 0), 0), [items]);
@@ -119,7 +134,15 @@ export default function InvoiceForm() {
         setProjectInvoicePercentage(0);
         setProjectBillingValue(0);
       }
-      setItems([{ id: crypto.randomUUID(), name: '', description: '', quantity: 1, rate: 0, total: 0 }]);
+      setItems([{ 
+        id: crypto.randomUUID(), 
+        name: '', 
+        description: '', 
+        quantity: 1, 
+        rate: 0, 
+        total: 0,
+        itemDate: new Date().toISOString().split('T')[0]
+      }]);
     }
   }, [invoiceType, selectedProject?.id, isEditing]);
 
@@ -141,9 +164,18 @@ export default function InvoiceForm() {
         vatApplicable: false,
         vatPercentage: 0,
         vatAmount: 0,
+        itemDate: new Date().toISOString().split('T')[0], // ✅ ADD item date
       })));
     } else {
-      setItems([{ id: crypto.randomUUID(), name: '', description: '', quantity: 1, rate: 0, total: 0 }]);
+      setItems([{ 
+        id: crypto.randomUUID(), 
+        name: '', 
+        description: '', 
+        quantity: 1, 
+        rate: 0, 
+        total: 0,
+        itemDate: new Date().toISOString().split('T')[0]
+      }]);
     }
   }, [invoiceType, selectedProject, selectedActivityIds]);
 
@@ -151,9 +183,6 @@ export default function InvoiceForm() {
     if (invoiceNumberMode === 'auto' && !isEditing) {
       setInvoiceNumber(generateInvoiceNumber());
     }
-    // generateInvoiceNumber identity is unstable across context renders;
-    // intentionally excluded from deps. Don't overwrite numbers on existing
-    // invoices.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoiceNumberMode, isEditing]);
 
@@ -233,10 +262,26 @@ export default function InvoiceForm() {
 
   const addItem = () => {
     if (isMobile) {
-      setTempItem({ id: crypto.randomUUID(), name: '', description: '', quantity: 1, rate: 0, total: 0 });
+      setTempItem({ 
+        id: crypto.randomUUID(), 
+        name: '', 
+        description: '', 
+        quantity: 1, 
+        rate: 0, 
+        total: 0,
+        itemDate: new Date().toISOString().split('T')[0]
+      });
       setIsAddItemSheetOpen(true);
     } else {
-      setItems((prev) => [...prev, { id: crypto.randomUUID(), name: '', description: '', quantity: 1, rate: 0, total: 0 }]);
+      setItems((prev) => [...prev, { 
+        id: crypto.randomUUID(), 
+        name: '', 
+        description: '', 
+        quantity: 1, 
+        rate: 0, 
+        total: 0,
+        itemDate: new Date().toISOString().split('T')[0]
+      }]);
     }
   };
 
@@ -248,7 +293,15 @@ export default function InvoiceForm() {
       setEditingItemIndex(null);
     } else { setItems((prev) => [...prev, itemToSave]); }
     setIsAddItemSheetOpen(false);
-    setTempItem({ id: '', name: '', description: '', quantity: 1, rate: 0, total: 0 });
+    setTempItem({ 
+      id: '', 
+      name: '', 
+      description: '', 
+      quantity: 1, 
+      rate: 0, 
+      total: 0,
+      itemDate: new Date().toISOString().split('T')[0]
+    });
   };
 
   const editItemMobile = (index: number) => { setEditingItemIndex(index); setTempItem({ ...items[index] }); setIsAddItemSheetOpen(true); };
@@ -376,7 +429,13 @@ export default function InvoiceForm() {
     if (!existingInvoice) return;
     const client = getClient(clientId);
     try {
-      await generatePDF({ type: 'invoice', document: existingInvoice, client, settings});
+      await generatePDF({ 
+        type: 'invoice', 
+        document: existingInvoice, 
+        client, 
+        settings,
+        showDateColumn: showDateColumn
+      });
       toast({ title: 'PDF downloaded successfully' });
     } catch (err) {
       toast({ title: 'PDF generation failed', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
@@ -387,7 +446,13 @@ export default function InvoiceForm() {
     if (!existingInvoice) return;
     const client = getClient(clientId);
     try {
-      await printDocument({ type: 'invoice', document: existingInvoice, client, settings });
+      await printDocument({ 
+        type: 'invoice', 
+        document: existingInvoice, 
+        client, 
+        settings,
+        showDateColumn: showDateColumn
+      });
     } catch (err) {
       toast({ title: 'Print failed', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
     }
@@ -396,7 +461,13 @@ export default function InvoiceForm() {
   const handleShare = () => {
     if (!existingInvoice) return;
     const client = getClient(clientId);
-    shareViaWhatsApp({ type: 'invoice', document: existingInvoice, client, settings });
+    shareViaWhatsApp({ 
+      type: 'invoice', 
+      document: existingInvoice, 
+      client, 
+      settings,
+      showDateColumn: showDateColumn
+    });
   };
 
   useEffect(() => { if (isEditing && !existingInvoice) navigate('/invoices'); }, [isEditing, existingInvoice, navigate]);
@@ -414,7 +485,13 @@ export default function InvoiceForm() {
     <div className="space-y-3 pb-24 lg:pb-4">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/invoices')} className="h-8 w-8 shrink-0">
+          {/* ✅ FIX 1: Back button goes to invoices list */}
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => navigate('/invoices')} 
+            className="h-8 w-8 shrink-0"
+          >
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="min-w-0">
@@ -455,29 +532,27 @@ export default function InvoiceForm() {
         )}
       </div>
 
-      {/* ✅ DATE COLUMN TOGGLE - Shows only when editing an existing invoice */}
-      {isEditing && existingInvoice && (
-        <Card>
-          <CardContent className="px-3 py-3">
-            <div className="flex items-center justify-between rounded-md border p-3">
-              <div>
-                <Label className="text-xs font-medium">Show Date Column</Label>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
-                  {showDateColumn 
-                    ? '📅 Date column visible | S.No hidden' 
-                    : '🔢 S.No visible | Date column hidden'}
-                </p>
-              </div>
-              <Switch 
-                checked={showDateColumn} 
-                onCheckedChange={setShowDateColumn} 
-              />
+      {/* ✅ FIX 2: Toggle always visible for both new and edit */}
+      <Card>
+        <CardContent className="px-3 py-3">
+          <div className="flex items-center justify-between rounded-md border p-3">
+            <div>
+              <Label className="text-xs font-medium">Show Date Column</Label>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                {showDateColumn 
+                  ? '📅 Date column visible | S.No hidden' 
+                  : '🔢 S.No visible | Date column hidden'}
+              </p>
             </div>
-          </CardContent>
-        </Card>
-      )}
+            <Switch 
+              checked={showDateColumn} 
+              onCheckedChange={setShowDateColumn} 
+            />
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* ✅ INVOICE PRINT PREVIEW - Shows only when editing an existing invoice */}
+      {/* Invoice Preview - Show when editing only */}
       {isEditing && existingInvoice && (
         <Card>
           <CardHeader className="py-2.5 px-3">
@@ -499,7 +574,7 @@ export default function InvoiceForm() {
         </Card>
       )}
 
-      {/* Client & Due Date (no status dropdown) */}
+      {/* Client & Due Date */}
       <Card>
         <CardHeader className="py-2.5 px-3"><CardTitle className="text-sm">Client & Details</CardTitle></CardHeader>
         <CardContent className="px-3 pb-3">
@@ -712,7 +787,7 @@ export default function InvoiceForm() {
         </Card>
       )}
 
-      {/* Items */}
+      {/* ✅ FIX 3: Items with individual dates */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between py-2.5 px-3">
           <CardTitle className="text-sm">Items</CardTitle>
@@ -726,7 +801,6 @@ export default function InvoiceForm() {
               <thead>
                 <tr className="border-b text-xs text-muted-foreground">
                   {showDateColumn ? (
-                    // ✅ When Date Column is ON: Show DATE column, hide S.No
                     <>
                       <th className="text-left py-2 w-24">Date</th>
                       <th className="text-left py-2">Description</th>
@@ -737,7 +811,6 @@ export default function InvoiceForm() {
                       <th className="w-8"></th>
                     </>
                   ) : (
-                    // ✅ When Date Column is OFF: Show S.No, hide Date
                     <>
                       <th className="text-left py-2 w-8">S.No</th>
                       <th className="text-left py-2">Description</th>
@@ -754,10 +827,15 @@ export default function InvoiceForm() {
                 {items.map((item, index) => (
                   <tr key={item.id} className="border-b last:border-0">
                     {showDateColumn ? (
-                      // ✅ Date Column ON: Show invoice date instead of S.No
+                      // ✅ Date Column ON: Show individual item date
                       <>
-                        <td className="py-2 text-muted-foreground whitespace-nowrap">
-                          {invoiceDate ? new Date(invoiceDate).toLocaleDateString('en-GB') : '-'}
+                        <td className="py-2">
+                          <Input 
+                            type="date" 
+                            value={item.itemDate || invoiceDate} 
+                            onChange={(e) => updateItem(index, 'itemDate', e.target.value)}
+                            className="h-8 text-xs"
+                          />
                         </td>
                         <td className="py-2 min-w-[180px]">
                           <div className="space-y-1">
@@ -896,9 +974,9 @@ export default function InvoiceForm() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       {showDateColumn ? (
-                        // Date Column ON: Show Date
+                        // Date Column ON: Show individual item date
                         <span className="text-xs text-muted-foreground">
-                          {invoiceDate ? new Date(invoiceDate).toLocaleDateString('en-GB') : '-'}
+                          {item.itemDate ? new Date(item.itemDate).toLocaleDateString('en-GB') : '-'}
                         </span>
                       ) : (
                         // Date Column OFF: Show S.No
@@ -1000,7 +1078,15 @@ export default function InvoiceForm() {
         setIsAddItemSheetOpen(open); 
         if (!open) { 
           setEditingItemIndex(null); 
-          setTempItem({ id: '', name: '', description: '', quantity: 1, rate: 0, total: 0 }); 
+          setTempItem({ 
+            id: '', 
+            name: '', 
+            description: '', 
+            quantity: 1, 
+            rate: 0, 
+            total: 0,
+            itemDate: new Date().toISOString().split('T')[0]
+          }); 
         } 
       }}>
         <SheetContent side="bottom" className="h-auto max-h-[85vh]">
@@ -1051,6 +1137,16 @@ export default function InvoiceForm() {
                   className="h-10" 
                 />
               </div>
+            </div>
+            {/* ✅ Add date picker for mobile */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Item Date</Label>
+              <Input 
+                type="date" 
+                value={tempItem.itemDate || invoiceDate} 
+                onChange={(e) => setTempItem({ ...tempItem, itemDate: e.target.value })} 
+                className="h-10" 
+              />
             </div>
             <div className="rounded-lg bg-muted p-3">
               <div className="flex justify-between text-sm font-medium">

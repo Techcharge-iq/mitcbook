@@ -31,6 +31,7 @@ export interface LineItem {
   vatApplicable?: boolean;
   vatPercentage?: number;
   vatAmount?: number;
+  itemDate?: string;
 }
 
 // Item master
