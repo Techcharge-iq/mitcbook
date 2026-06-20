@@ -173,6 +173,11 @@ export interface Payment {
   reference?: string;
   notes: string;
   createdAt: string;
+  // Receipt fields
+  receiptNumber?: string;
+  receiptPrintedAt?: string;
+  isPartialPayment?: boolean;
+  invoiceNumberReference?: string;
 }
 
 // Double-Entry Accounting types

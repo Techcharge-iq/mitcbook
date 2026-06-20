@@ -1,0 +1,694 @@
+/**
+ * Print CSS Customization Presets
+ * 
+ * Copy and paste these CSS rules into print-styles.css to customize the look and feel
+ * of your invoice and receipt printing.
+ * 
+ * Each section is independent and can be mixed and matched.
+ */
+
+/* ============================================
+   PRESET 1: Corporate Blue Theme
+   ============================================ */
+
+/*
+.invoice-header,
+.company-name,
+.section-title,
+.table-header,
+.invoice-table thead,
+.total-row.total,
+.metadata-label {
+  background: #003d7a !important;
+  color: white !important;
+}
+
+.invoice-type {
+  background: #0055a5;
+  border-color: #0055a5;
+  color: white;
+}
+
+.total-row.total {
+  background: #003d7a;
+}
+
+.receipt-title,
+.receipt-badge {
+  color: #003d7a;
+  border-color: #003d7a;
+  background: #e8f0f8;
+}
+
+.receipt-amount-box {
+  background: linear-gradient(135deg, #003d7a 0%, #002654 100%);
+}
+*/
+
+/* ============================================
+   PRESET 2: Modern Green Theme
+   ============================================ */
+
+/*
+.invoice-header,
+.company-name,
+.section-title,
+.table-header,
+.invoice-table thead,
+.total-row.total {
+  background: #2d8e3f !important;
+  color: white !important;
+}
+
+.invoice-type {
+  background: #2d8e3f;
+  border-color: #2d8e3f;
+  color: white;
+}
+
+.receipt-badge {
+  background: #e8f5e9;
+  border-color: #2d8e3f;
+  color: #2d8e3f;
+}
+
+.receipt-amount-box {
+  background: linear-gradient(135deg, #2d8e3f 0%, #1b5e20 100%);
+}
+
+.amount-in-words {
+  background: #e8f5e9;
+  border-left-color: #2d8e3f;
+}
+
+.receipt-amount-words {
+  background: #e8f5e9;
+  border-left-color: #2d8e3f;
+}
+*/
+
+/* ============================================
+   PRESET 3: Professional Purple Theme
+   ============================================ */
+
+/*
+.invoice-header,
+.company-name,
+.section-title,
+.table-header,
+.total-row.total {
+  background: #663399 !important;
+  color: white !important;
+}
+
+.invoice-type {
+  background: #663399;
+  border-color: #663399;
+  color: white;
+}
+
+.receipt-title {
+  color: #663399;
+}
+
+.receipt-badge {
+  background: #f3e5f5;
+  border-color: #663399;
+  color: #663399;
+}
+
+.receipt-amount-box {
+  background: linear-gradient(135deg, #663399 0%, #4a1570 100%);
+}
+*/
+
+/* ============================================
+   PRESET 4: Warm Orange Theme
+   ============================================ */
+
+/*
+.invoice-header,
+.company-name,
+.section-title,
+.table-header,
+.total-row.total {
+  background: #f57c00 !important;
+  color: white !important;
+}
+
+.invoice-type {
+  background: #ff6f00;
+  border-color: #ff6f00;
+  color: white;
+}
+
+.receipt-title {
+  color: #f57c00;
+}
+
+.receipt-badge {
+  background: #fff3e0;
+  border-color: #f57c00;
+  color: #f57c00;
+}
+
+.receipt-amount-box {
+  background: linear-gradient(135deg, #f57c00 0%, #e65100 100%);
+}
+*/
+
+/* ============================================
+   PRESET 5: Premium Red Theme
+   ============================================ */
+
+/*
+.invoice-header,
+.company-name,
+.section-title,
+.table-header,
+.total-row.total {
+  background: #c41c3b !important;
+  color: white !important;
+}
+
+.invoice-type {
+  background: #c41c3b;
+  border-color: #c41c3b;
+  color: white;
+}
+
+.receipt-badge {
+  background: #ffebee;
+  border-color: #c41c3b;
+  color: #c41c3b;
+}
+
+.receipt-amount-box {
+  background: linear-gradient(135deg, #c41c3b 0%, #820419 100%);
+}
+*/
+
+/* ============================================
+   PRESET 6: Minimal Black & White
+   ============================================ */
+
+/*
+.invoice-header,
+.company-name,
+.section-title,
+.table-header,
+.total-row.total {
+  background: #000000 !important;
+  color: white !important;
+}
+
+.invoice-type {
+  background: transparent;
+  border-color: #000000;
+  color: #000000;
+}
+
+.receipt-title {
+  color: #000000;
+}
+
+.receipt-badge {
+  background: #f0f0f0;
+  border-color: #000000;
+  color: #000000;
+}
+
+.receipt-amount-box {
+  background: linear-gradient(135deg, #333333 0%, #000000 100%);
+}
+
+.amount-in-words,
+.receipt-amount-words {
+  background: #f5f5f5;
+  border-left-color: #000000;
+}
+*/
+
+/* ============================================
+   PRESET 7: Light Elegant Theme
+   ============================================ */
+
+/*
+.invoice-header,
+.company-name,
+.section-title,
+.table-header,
+.total-row.total {
+  background: #4a5568 !important;
+  color: white !important;
+}
+
+.invoice-type {
+  background: #2d3748;
+  border-color: #2d3748;
+  color: white;
+}
+
+.table-row:nth-child(even) {
+  background: #f7fafc;
+}
+
+.bill-section {
+  background: #edf2f7;
+  border-color: #cbd5e0;
+}
+
+.metadata-section {
+  background: #edf2f7;
+}
+
+.receipt-amount-box {
+  background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+}
+*/
+
+/* ============================================
+   FONT SIZE ADJUSTMENTS
+   ============================================ */
+
+/* Compact Size (for fitting more on one page) */
+/*
+.invoice-print-container,
+.receipt-print-container {
+  font-size: 9px;
+}
+
+.company-name {
+  font-size: 20px;
+}
+
+.invoice-table {
+  font-size: 9px;
+}
+*/
+
+/* Large Size (for improved readability) */
+/*
+.invoice-print-container,
+.receipt-print-container {
+  font-size: 12px;
+}
+
+.company-name {
+  font-size: 28px;
+}
+
+.table-header th {
+  font-size: 11px;
+}
+
+.invoice-table td {
+  padding: 8px;
+  height: 36px;
+}
+*/
+
+/* ============================================
+   MARGIN & SPACING ADJUSTMENTS
+   ============================================ */
+
+/* Tight Spacing (minimize white space) */
+/*
+.invoice-header {
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+}
+
+.bill-section {
+  margin-bottom: 10px;
+  padding: 8px;
+}
+
+.invoice-table {
+  margin-bottom: 10px;
+}
+
+.totals-section {
+  margin-bottom: 10px;
+}
+
+.amount-in-words {
+  padding: 8px;
+  margin-bottom: 10px;
+}
+*/
+
+/* Relaxed Spacing (increase white space) */
+/*
+.invoice-header {
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+}
+
+.bill-section {
+  margin-bottom: 25px;
+  padding: 15px;
+}
+
+.invoice-table {
+  margin-bottom: 25px;
+}
+
+.totals-section {
+  margin-bottom: 25px;
+}
+
+.invoice-footer {
+  margin-top: 40px;
+  padding-top: 20px;
+}
+*/
+
+/* ============================================
+   LOGO & IMAGE CUSTOMIZATION
+   ============================================ */
+
+/* Larger Logo */
+/*
+.company-logo {
+  max-width: 120px;
+  max-height: 120px;
+}
+
+.company-logo-placeholder {
+  width: 120px;
+  height: 120px;
+  font-size: 48px;
+}
+*/
+
+/* Smaller Logo */
+/*
+.company-logo {
+  max-width: 50px;
+  max-height: 50px;
+}
+
+.company-logo-placeholder {
+  width: 50px;
+  height: 50px;
+  font-size: 20px;
+}
+*/
+
+/* Hide Logo */
+/*
+.company-logo,
+.company-logo-placeholder,
+.company-logo-small,
+.company-logo-placeholder-small {
+  display: none;
+}
+
+.header-left,
+.receipt-header-left {
+  display: none;
+}
+
+.invoice-header {
+  grid-template-columns: 1fr 150px;
+}
+
+.receipt-header {
+  grid-template-columns: 1fr 120px;
+}
+*/
+
+/* ============================================
+   BORDER & LINE CUSTOMIZATION
+   ============================================ */
+
+/* Bold Borders */
+/*
+.invoice-header,
+.receipt-header {
+  border-bottom: 4px solid #000;
+}
+
+.invoice-table,
+.receipt-metadata,
+.bill-section {
+  border: 2px solid #000;
+}
+
+.table-header th {
+  border: 2px solid #000;
+}
+*/
+
+/* Subtle Borders */
+/*
+.invoice-header,
+.receipt-header {
+  border-bottom: 1px solid #ccc;
+}
+
+.invoice-table {
+  border: 1px solid #e0e0e0;
+}
+
+.table-header th {
+  border: 1px solid #e0e0e0;
+}
+*/
+
+/* No Borders */
+/*
+.invoice-header,
+.receipt-header {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.invoice-table,
+.receipt-metadata,
+.bill-section {
+  border: none;
+}
+
+.table-row {
+  border-bottom: none;
+}
+*/
+
+/* ============================================
+   ROW STRIPING ADJUSTMENTS
+   ============================================ */
+
+/* No Striping */
+/*
+.table-row:nth-child(even) {
+  background: white;
+}
+
+.table-row:hover {
+  background: white;
+}
+*/
+
+/* Bold Striping */
+/*
+.table-row:nth-child(even) {
+  background: #e0e0e0;
+}
+
+.table-row:nth-child(odd) {
+  background: #f9f9f9;
+}
+*/
+
+/* ============================================
+   VISIBILITY TOGGLES
+   ============================================ */
+
+/* Hide Date Column */
+/*
+.col-date {
+  display: none;
+}
+*/
+
+/* Hide VAT Column */
+/*
+.col-vat {
+  display: none;
+}
+
+.total-row.vat {
+  display: none;
+}
+*/
+
+/* Hide Signature */
+/*
+.signature-section {
+  display: none;
+}
+*/
+
+/* Hide Bank Details */
+/*
+.account-details,
+.receipt-bank-details {
+  display: none;
+}
+*/
+
+/* Hide Notes */
+/*
+.notes-section {
+  display: none;
+}
+*/
+
+/* Hide Amount in Words */
+/*
+.amount-in-words,
+.receipt-amount-words {
+  display: none;
+}
+*/
+
+/* ============================================
+   CURRENCY & AMOUNT STYLING
+   ============================================ */
+
+/* Large Amount Display */
+/*
+.amount-value.primary {
+  font-size: 28px;
+}
+*/
+
+/* Bold Currency Symbols */
+/*
+.invoice-table td {
+  font-family: 'Arial', sans-serif;
+}
+*/
+
+/* ============================================
+   FOOTER CUSTOMIZATION
+   ============================================ */
+
+/* Hide Footer */
+/*
+.invoice-footer,
+.receipt-footer {
+  display: none;
+}
+*/
+
+/* Minimal Footer */
+/*
+.invoice-footer,
+.receipt-footer {
+  font-size: 8px;
+  margin-top: 15px;
+  padding-top: 10px;
+  border-top: 1px solid #ccc;
+}
+
+.company-name-footer,
+.footer-text {
+  margin: 2px 0;
+}
+*/
+
+/* ============================================
+   PRINTING OPTIMIZATION
+   ============================================ */
+
+/* Reduce Paper Usage */
+/*
+@media print {
+  @page {
+    margin: 0.3cm;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  .invoice-print-container,
+  .receipt-print-container {
+    padding: 10px;
+  }
+}
+*/
+
+/* Maximum Quality */
+/*
+@media print {
+  @page {
+    margin: 1cm;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+}
+*/
+
+/* ============================================
+   RESPONSIVE ADJUSTMENTS
+   ============================================ */
+
+/* Mobile Print */
+/*
+@media print and (max-width: 595px) {
+  .col-description {
+    width: 55%;
+  }
+
+  .col-rate {
+    font-size: 8px;
+  }
+
+  .company-name {
+    font-size: 16px;
+  }
+
+  .invoice-header,
+  .receipt-header {
+    grid-template-columns: 1fr;
+  }
+}
+*/
+
+/* ============================================
+   HOW TO USE THESE PRESETS
+   ============================================ 
+
+1. Choose a preset that matches your brand
+2. Copy the CSS comments and uncomment the rules inside
+3. Replace #YOUR_COLOR with your actual color code
+4. Paste into print-styles.css (or create a separate custom-print-styles.css)
+5. Test the print preview to ensure it looks good
+6. Adjust colors/sizes as needed
+
+EXAMPLE:
+// Uncomment this section:
+.invoice-header,
+.company-name,
+.section-title,
+.table-header,
+.invoice-table thead,
+.total-row.total,
+.metadata-label {
+  background: #003d7a !important;
+  color: white !important;
+}
+
+// Save and refresh your page
+// Print preview should now show corporate blue theme
+
+*/
