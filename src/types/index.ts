@@ -138,7 +138,6 @@ export interface Invoice {
   terms: string;
   createdAt: string;
   updatedAt: string;
-  itemDate?: string;
 }
 
 // Purchase Invoice types
