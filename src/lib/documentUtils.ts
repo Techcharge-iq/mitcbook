@@ -2,11 +2,13 @@ import type { Quotation, Invoice, Client, BusinessSettings } from '@/types';
 import { currencySymbols } from '@/types';
 import { cloudFetchById, getUserId } from '@/lib/cloudSync';
 
+// ✅ ADD showDateColumn to DocumentData interface
 interface DocumentData {
   type: 'quotation' | 'invoice';
   document: Quotation | Invoice;
   client?: Client;
   settings: BusinessSettings;
+  showDateColumn?: boolean;  // ← ADDED
 }
 
 // Convert number to words for amount display
@@ -67,26 +69,32 @@ function numberToWords(num: number, currency: string): string {
   return result + ' Only';
 }
 
-// ---------------- FIXED FUNCTION ----------------
-export async function generatePDF({ type, document: docData, client, settings }: DocumentData) {
-  const pdfBlob = await generatePDFBlob({ type, document: docData, client, settings });
+// ✅ UPDATED - Added showDateColumn parameter
+export async function generatePDF({ type, document: docData, client, settings, showDateColumn = true }: DocumentData) {
+  const pdfBlob = await generatePDFBlob({ 
+    type, 
+    document: docData, 
+    client, 
+    settings,
+    showDateColumn  // ← PASS THROUGH
+  });
 
   const filename = `${type}-${docData.number}.pdf`;
   const objectUrl = window.URL.createObjectURL(pdfBlob);
 
-  const anchor = window.document.createElement('a'); // ✅ FIXED
+  const anchor = window.document.createElement('a');
   anchor.href = objectUrl;
   anchor.download = filename;
 
-  window.document.body.appendChild(anchor); // ✅ FIXED
+  window.document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
 
   window.URL.revokeObjectURL(objectUrl);
 }
 
-// ---------------- WHATSAPP ----------------
-export async function shareViaWhatsApp({ type, document: docData, client, settings }: DocumentData) {
+// ✅ UPDATED - Added showDateColumn parameter
+export async function shareViaWhatsApp({ type, document: docData, client, settings, showDateColumn = true }: DocumentData) {
   const currencySymbol = currencySymbols[settings.currency];
   const isInvoice = type === 'invoice';
 
@@ -106,12 +114,19 @@ export async function shareViaWhatsApp({ type, document: docData, client, settin
   window.open(url, '_blank');
 
   // Run PDF generation in the background so share stays user-gesture initiated
-  void generatePDF({ type, document: docData, client, settings }).catch((err) => {
+  void generatePDF({ 
+    type, 
+    document: docData, 
+    client, 
+    settings,
+    showDateColumn  // ← PASS THROUGH
+  }).catch((err) => {
     console.error('PDF error:', err);
   });
 }
-// Helper function to generate PDF as blob
-export async function generatePDFBlob({ type, document: docData, client, settings }: DocumentData) {
+
+// ✅ UPDATED - Added showDateColumn parameter
+export async function generatePDFBlob({ type, document: docData, client, settings, showDateColumn = true }: DocumentData) {
   // Re-fetch the latest record from the cloud so we never render stale/empty data.
   try {
     const uid = await getUserId();
@@ -146,6 +161,17 @@ export async function generatePDFBlob({ type, document: docData, client, setting
   const showVat = vatAmount > 0;
   const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
   const money = (n: number) => `${currencySymbol} ${fmt(n)}`;
+
+  // ✅ Get invoice date for display
+  const invoiceDate = isInvoice && invoice?.invoiceDate 
+    ? new Date(invoice.invoiceDate) 
+    : new Date((docData as any).invoiceDate || docData.createdAt);
+
+  const formattedDate = invoiceDate.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
 
   const styleHtml = `
     <style>
@@ -196,6 +222,58 @@ export async function generatePDFBlob({ type, document: docData, client, setting
     </style>
   `;
 
+  // ✅ TABLE HEADERS - Conditional based on showDateColumn
+  const tableHeaders = `
+    <tr>
+      ${showDateColumn ? `
+        <!-- Date Column ON: Show DATE, hide S.No -->
+        <th style="width: 100px;">Date</th>
+        <th>Description</th>
+        <th style="width: 60px;">Qty</th>
+        <th style="width: 70px;">Unit</th>
+        <th style="width: 110px;">Rate</th>
+        <th style="width: 120px;">Amount</th>
+      ` : `
+        <!-- Date Column OFF: Show S.No, hide Date -->
+        <th style="width: 40px;">S.No</th>
+        <th>Description</th>
+        <th style="width: 60px;">Qty</th>
+        <th style="width: 70px;">Unit</th>
+        <th style="width: 110px;">Rate</th>
+        <th style="width: 120px;">Amount</th>
+      `}
+    </tr>
+  `;
+
+  // ✅ TABLE ROWS - Conditional based on showDateColumn
+  const tableRows = docData.items.map((item, index) => `
+    <tr>
+      ${showDateColumn ? `
+        <!-- Date Column ON: Show Date, hide S.No -->
+        <td style="font-size: 13px; color: #6b7280;">${formattedDate}</td>
+        <td>
+          <div class="item-name">${item.name}</div>
+          ${item.description ? `<div class="item-desc">${item.description}</div>` : ''}
+        </td>
+        <td>${item.quantity}</td>
+        <td>${item.unit ?? ''}</td>
+        <td>${money(item.rate || 0)}</td>
+        <td>${money(item.total || 0)}</td>
+      ` : `
+        <!-- Date Column OFF: Show S.No, hide Date -->
+        <td>${index + 1}</td>
+        <td>
+          <div class="item-name">${item.name}</div>
+          ${item.description ? `<div class="item-desc">${item.description}</div>` : ''}
+        </td>
+        <td>${item.quantity}</td>
+        <td>${item.unit ?? ''}</td>
+        <td>${money(item.rate || 0)}</td>
+        <td>${money(item.total || 0)}</td>
+      `}
+    </tr>
+  `).join('');
+
   const bodyHtml = `
     <div class="pdf-root">
       <div class="header">
@@ -214,8 +292,8 @@ export async function generatePDFBlob({ type, document: docData, client, setting
         <div class="doc-info">
           <div class="doc-type">${docTypeLabel}</div>
           <div class="doc-number">${docData.number}</div>
-          <div class="doc-date">Date: ${new Date((isInvoice && invoice?.invoiceDate) ? invoice.invoiceDate : (docData as any).invoiceDate || docData.createdAt).toLocaleDateString('en-IN')}</div>
-          ${isInvoice && invoice?.dueDate ? `<div class="doc-date">Due: ${new Date(invoice.dueDate).toLocaleDateString('en-IN')}</div>` : ''}
+          <div class="doc-date">Date: ${formattedDate}</div>
+          ${isInvoice && invoice?.dueDate ? `<div class="doc-date">Due: ${new Date(invoice.dueDate).toLocaleDateString('en-GB')}</div>` : ''}
         </div>
       </div>
       <div class="parties">
@@ -243,29 +321,10 @@ export async function generatePDFBlob({ type, document: docData, client, setting
 
       <table>
         <thead>
-          <tr>
-            <th style="width: 40px;">S.No</th>
-            <th>Description</th>
-            <th style="width: 60px;">Qty</th>
-            <th style="width: 70px;">Unit</th>
-            <th style="width: 110px;">Rate</th>
-            <th style="width: 120px;">Amount</th>
-          </tr>
+          ${tableHeaders}
         </thead>
         <tbody>
-          ${docData.items.map((item, index) => `
-            <tr>
-              <td>${index + 1}</td>
-              <td>
-                <div class="item-name">${item.name}</div>
-                ${item.description ? `<div class="item-desc">${item.description}</div>` : ''}
-              </td>
-              <td>${item.quantity}</td>
-              <td>${item.unit ?? ''}</td>
-              <td>${money(item.rate || 0)}</td>
-              <td>${money(item.total || 0)}</td>
-            </tr>
-          `).join('')}
+          ${tableRows}
         </tbody>
       </table>
 
@@ -311,7 +370,7 @@ export async function generatePDFBlob({ type, document: docData, client, setting
     </div>
   `;
 
-  console.log('[PDF] generating', type, docData.number, 'items:', docData.items?.length ?? 0, 'netTotal:', docData.netTotal);
+  console.log('[PDF] generating', type, docData.number, 'items:', docData.items?.length ?? 0, 'netTotal:', docData.netTotal, 'showDateColumn:', showDateColumn);
 
   const container = window.document.createElement('div');
   container.style.position = 'fixed';
@@ -400,9 +459,15 @@ export async function generatePDFBlob({ type, document: docData, client, setting
   }
 }
 
-// ---------------- PRINT ----------------
-export async function printDocument({ type, document: docData, client, settings }: DocumentData) {
-  const pdfBlob = await generatePDFBlob({ type, document: docData, client, settings });
+// ✅ UPDATED - Added showDateColumn parameter
+export async function printDocument({ type, document: docData, client, settings, showDateColumn = true }: DocumentData) {
+  const pdfBlob = await generatePDFBlob({ 
+    type, 
+    document: docData, 
+    client, 
+    settings,
+    showDateColumn  // ← PASS THROUGH
+  });
   const objectUrl = window.URL.createObjectURL(pdfBlob);
   const iframe = window.document.createElement('iframe');
   iframe.style.position = 'fixed';

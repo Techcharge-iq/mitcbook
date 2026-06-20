@@ -1,191 +1,931 @@
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '@/contexts/AppContext';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
 import {
-  Collapsible, CollapsibleContent, CollapsibleTrigger,
-} from '@/components/ui/collapsible';
-import { currencySymbols, type InvoiceStatus } from '@/types';
-import { Plus, Search, Receipt, Trash2, Edit, ChevronDown, Filter } from 'lucide-react';
+  Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
+} from '@/components/ui/sheet';
+import { useToast } from '@/hooks/use-toast';
+import { currencySymbols, type Invoice, type LineItem, type InvoiceStatus, type Client } from '@/types';
+import { Plus, Trash2, Save, ArrowLeft, Send, Download, Share2, Edit2, CreditCard, Printer } from 'lucide-react';
+import { generatePDF, printDocument, shareViaWhatsApp } from '@/lib/documentUtils';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { ItemPicker } from '@/components/ItemPicker';
+// ✅ Import InvoicePrint component
+import { InvoicePrint } from '@/components/InvoicePrint';
 
-export default function InvoicesList() {
-  const { invoices, payments, deleteInvoice, getClient, getSalesman, settings } = useApp();
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'all'>('all');
-  const [filtersOpen, setFiltersOpen] = useState(false);
+export default function InvoiceForm() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { toast } = useToast();
+  const isMobile = useIsMobile();
+  const {
+    invoices, addInvoice, updateInvoice,
+    quotations, updateQuotation,
+    clients, addClient, getClient, settings,
+    generateInvoiceNumber,
+    postSalesInvoice, repostSalesInvoice, adjustItemStock, calculateInvoicePaymentStatus,
+    salesmen, addSalesman,
+    projects,
+  } = useApp();
+
+  const isEditing = id && id !== 'new';
+  const existingInvoice = isEditing ? invoices.find((i) => i.id === id) : null;
+  const fromQuotationId = searchParams.get('fromQuotation');
+  const sourceQuotation = fromQuotationId ? quotations.find((q) => q.id === fromQuotationId) : null;
   const currencySymbol = currencySymbols[settings.currency];
 
-  // Single pass: invoiceId -> total paid. Avoids O(N*M) scan on every render.
-  const paidByInvoice = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const p of payments) {
-      map.set(p.invoiceId, (map.get(p.invoiceId) ?? 0) + p.amount);
-    }
-    return map;
-  }, [payments]);
+  // ✅ State for date column toggle (default: true - show date)
+  const [showDateColumn, setShowDateColumn] = useState(true);
 
-  const now = useMemo(() => Date.now(), []);
+  const defaultDueDate = new Date();
+  defaultDueDate.setDate(defaultDueDate.getDate() + 30);
 
-  const getDisplayStatus = (status: InvoiceStatus, invoiceId: string, dueDate: string, total: number): InvoiceStatus => {
-    if (status === 'draft' || status === 'cancelled') return status;
-    const paid = paidByInvoice.get(invoiceId) ?? 0;
-    if (paid >= total && total > 0) return 'paid';
-    if (paid > 0) return 'partial';
-    return new Date(dueDate).getTime() < now ? 'overdue' : 'sent';
-  };
-
-  const searchLower = search.toLowerCase();
-  const filteredInvoices = useMemo(() => invoices.filter((i) => {
-    const client = getClient(i.clientId);
-    const matchesSearch = i.number.toLowerCase().includes(searchLower) || client?.name.toLowerCase().includes(searchLower);
-    const displayStatus = getDisplayStatus(i.status, i.id, i.dueDate, i.netTotal);
-    const matchesStatus = statusFilter === 'all' || displayStatus === statusFilter;
-    return matchesSearch && matchesStatus;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [invoices, searchLower, statusFilter, paidByInvoice]);
-
-  const sortedInvoices = useMemo(
-    () => [...filteredInvoices].sort((a, b) => b.number.localeCompare(a.number, undefined, { numeric: true })),
-    [filteredInvoices],
+  const [clientId, setClientId] = useState(existingInvoice?.clientId || sourceQuotation?.clientId || '');
+  const [salesmanId, setSalesmanId] = useState<string>(existingInvoice?.salesmanId || sourceQuotation?.salesmanId || '');
+  const [invoiceDate, setInvoiceDate] = useState(existingInvoice?.invoiceDate || new Date().toISOString().split('T')[0]);
+  const [dueDate, setDueDate] = useState(existingInvoice?.dueDate || defaultDueDate.toISOString().split('T')[0]);
+  const [notes, setNotes] = useState(existingInvoice?.notes || sourceQuotation?.notes || '');
+  const [terms, setTerms] = useState(existingInvoice?.terms || sourceQuotation?.terms || 'Payment terms: Net 30 days');
+  const [invoiceType, setInvoiceType] = useState<'normal' | 'project'>(existingInvoice?.invoiceType || 'normal');
+  const [projectId, setProjectId] = useState(existingInvoice?.projectId || '');
+  const [projectInvoicePercentage, setProjectInvoicePercentage] = useState<number>(existingInvoice?.projectSummary?.currentPercentage || 0);
+  const [projectBillingValue, setProjectBillingValue] = useState<number>(existingInvoice?.billingValue || 0);
+  const [selectedActivityIds, setSelectedActivityIds] = useState<string[]>(existingInvoice?.selectedActivityIds || []);
+  const [invoiceNumberMode, setInvoiceNumberMode] = useState<'auto' | 'manual'>(existingInvoice?.invoiceNumberMode || 'auto');
+  const [invoiceNumber, setInvoiceNumber] = useState(existingInvoice?.number || generateInvoiceNumber());
+  const [vatEnabled, setVatEnabled] = useState(existingInvoice?.vatEnabled ?? settings.vatEnabled ?? true);
+  const [items, setItems] = useState<LineItem[]>(
+    existingInvoice?.items || sourceQuotation?.items || [{ id: crypto.randomUUID(), name: '', description: '', quantity: 1, rate: 0, total: 0 }]
   );
 
-  const getStatusDot = (status: InvoiceStatus) => {
-    const colors: Record<InvoiceStatus, string> = {
-      draft: 'bg-muted-foreground',
-      sent: 'bg-primary',
-      paid: 'bg-success',
-      partial: 'bg-warning',
-      overdue: 'bg-destructive',
-      cancelled: 'bg-muted-foreground',
+  const [isAddClientOpen, setIsAddClientOpen] = useState(false);
+  const [newClient, setNewClient] = useState({ name: '', email: '', phone: '', address: '' });
+  const [isAddSalesmanOpen, setIsAddSalesmanOpen] = useState(false);
+  const [newSalesman, setNewSalesman] = useState({ name: '', phone: '' });
+  const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
+  const [isAddItemSheetOpen, setIsAddItemSheetOpen] = useState(false);
+  const [tempItem, setTempItem] = useState<LineItem>({ id: '', name: '', description: '', quantity: 1, rate: 0, total: 0 });
+
+  const canUseManualInvoiceNumber = settings.allowManualInvoiceNumberEntry || existingInvoice?.invoiceNumberMode === 'manual';
+  const netTotal = useMemo(() => items.reduce((sum, item) => sum + (item.total || 0), 0), [items]);
+  const vatRate = vatEnabled ? (settings.defaultVatPercentage ?? 5) : 0;
+  const vatTotal = useMemo(() => +(netTotal * vatRate / 100).toFixed(3), [netTotal, vatRate]);
+  const grandTotal = +(netTotal + vatTotal).toFixed(3);
+  // Calculate displayed status based on payment records
+  const displayedStatus: InvoiceStatus | 'draft' = existingInvoice ? calculateInvoicePaymentStatus(existingInvoice.id) : 'draft';
+  const currentStatus: InvoiceStatus = existingInvoice?.status === 'draft' 
+    ? 'draft' 
+    : existingInvoice?.status === 'cancelled'
+    ? 'cancelled'
+    : displayedStatus;
+
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.id === projectId),
+    [projectId, projects],
+  );
+
+  const projectActivities = useMemo(() => selectedProject?.activities || [], [selectedProject]);
+  const selectedProjectActivities = useMemo(
+    () => projectActivities.filter((activity) => selectedActivityIds.includes(activity.id)),
+    [projectActivities, selectedActivityIds],
+  );
+
+  useEffect(() => {
+    if (invoiceType === 'project' && selectedProject && !isEditing) {
+      setClientId(selectedProject.customerId);
+    }
+  }, [invoiceType, selectedProject, isEditing]);
+
+  useEffect(() => {
+    if (invoiceType === 'project' && selectedProject) {
+      if (!isEditing) {
+        setSelectedActivityIds([]);
+        setProjectInvoicePercentage(0);
+        setProjectBillingValue(0);
+      }
+      setItems([{ id: crypto.randomUUID(), name: '', description: '', quantity: 1, rate: 0, total: 0 }]);
+    }
+  }, [invoiceType, selectedProject?.id, isEditing]);
+
+  useEffect(() => {
+    if (invoiceType !== 'project' || !selectedProject) return;
+    const selectedActivities = selectedProject.activities.filter((activity) => selectedActivityIds.includes(activity.id));
+    const totalPercentage = selectedActivities.reduce((sum, activity) => sum + activity.percentage, 0);
+    const totalValue = selectedActivities.reduce((sum, activity) => sum + activity.value, 0);
+    setProjectInvoicePercentage(totalPercentage);
+    setProjectBillingValue(totalValue);
+    if (selectedActivities.length > 0) {
+      setItems(selectedActivities.map((activity) => ({
+        id: crypto.randomUUID(),
+        name: activity.name,
+        description: `Project activity: ${activity.name}`,
+        quantity: 1,
+        rate: activity.value,
+        total: activity.value,
+        vatApplicable: false,
+        vatPercentage: 0,
+        vatAmount: 0,
+      })));
+    } else {
+      setItems([{ id: crypto.randomUUID(), name: '', description: '', quantity: 1, rate: 0, total: 0 }]);
+    }
+  }, [invoiceType, selectedProject, selectedActivityIds]);
+
+  useEffect(() => {
+    if (invoiceNumberMode === 'auto' && !isEditing) {
+      setInvoiceNumber(generateInvoiceNumber());
+    }
+    // generateInvoiceNumber identity is unstable across context renders;
+    // intentionally excluded from deps. Don't overwrite numbers on existing
+    // invoices.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceNumberMode, isEditing]);
+
+  const projectSummary = useMemo(() => {
+    if (invoiceType !== 'project' || !selectedProject) return undefined;
+
+    const previousProjectInvoices = invoices.filter(
+      (invoice) => invoice.invoiceType === 'project' && invoice.projectId === selectedProject.id && invoice.id !== existingInvoice?.id,
+    );
+
+    const previousAmount = previousProjectInvoices.reduce((sum, invoice) => sum + (invoice.netTotal || 0), 0);
+    const previousPercentage = previousProjectInvoices.reduce(
+      (sum, invoice) => sum + (invoice.projectSummary?.currentPercentage || 0),
+      0,
+    );
+
+    const currentAmount = projectBillingValue;
+    const currentPercentage = projectInvoicePercentage;
+    const totalInvoicedAmount = previousAmount + currentAmount;
+    const totalInvoicedPercentage = Math.min(100, previousPercentage + currentPercentage);
+
+    return {
+      projectTotalValue: selectedProject.totalValue,
+      previousPercentage,
+      previousAmount,
+      currentPercentage,
+      currentAmount,
+      totalInvoicedPercentage,
+      totalInvoicedAmount,
+      remainingPercentage: Math.max(0, 100 - totalInvoicedPercentage),
+      remainingAmount: Math.max(0, selectedProject.totalValue - totalInvoicedAmount),
     };
-    return <span className={`inline-block h-2 w-2 rounded-full ${colors[status]}`} />;
+  }, [invoiceType, selectedProject, invoices, grandTotal, projectInvoicePercentage, existingInvoice?.id]);
+
+  const updateItem = (index: number, field: keyof LineItem, value: string | number) => {
+    setItems((prev) => {
+      const updated = [...prev];
+      const item = { ...updated[index] };
+      const currentVatApplicable = vatEnabled && item.vatApplicable;
+      if (field === 'quantity' || field === 'rate') {
+        item[field] = Number(value) || 0;
+        item.total = item.quantity * item.rate;
+        item.vatAmount = currentVatApplicable ? (item.total * (item.vatPercentage ?? 0)) / 100 : 0;
+      } else { (item as any)[field] = value; }
+      if (!vatEnabled) {
+        item.vatAmount = 0;
+        item.vatApplicable = false;
+      }
+      updated[index] = item;
+      return updated;
+    });
+  };
+
+  const selectItemForRow = (index: number, picked: { id: string; name: string; description?: string; unit?: string; rate: number; vatApplicable: boolean; vatPercentage: number; }) => {
+    setItems((prev) => {
+      const updated = [...prev];
+      const cur = updated[index];
+      const qty = cur.quantity || 1;
+      const rate = picked.rate;
+      const total = qty * rate;
+      const vatAmount = vatEnabled && picked.vatApplicable ? (total * picked.vatPercentage) / 100 : 0;
+      updated[index] = {
+        ...cur,
+        itemId: picked.id,
+        name: picked.name,
+        description: picked.description ?? cur.description,
+        unit: picked.unit ?? cur.unit,
+        rate,
+        total,
+        vatApplicable: vatEnabled ? picked.vatApplicable : false,
+        vatPercentage: picked.vatPercentage,
+        vatAmount,
+      };
+      return updated;
+    });
+  };
+
+  const addItem = () => {
+    if (isMobile) {
+      setTempItem({ id: crypto.randomUUID(), name: '', description: '', quantity: 1, rate: 0, total: 0 });
+      setIsAddItemSheetOpen(true);
+    } else {
+      setItems((prev) => [...prev, { id: crypto.randomUUID(), name: '', description: '', quantity: 1, rate: 0, total: 0 }]);
+    }
+  };
+
+  const saveMobileItem = () => {
+    if (!tempItem.name.trim()) { toast({ title: 'Error', description: 'Item name is required', variant: 'destructive' }); return; }
+    const itemToSave = { ...tempItem, total: tempItem.quantity * tempItem.rate };
+    if (editingItemIndex !== null) {
+      setItems((prev) => { const updated = [...prev]; updated[editingItemIndex] = itemToSave; return updated; });
+      setEditingItemIndex(null);
+    } else { setItems((prev) => [...prev, itemToSave]); }
+    setIsAddItemSheetOpen(false);
+    setTempItem({ id: '', name: '', description: '', quantity: 1, rate: 0, total: 0 });
+  };
+
+  const editItemMobile = (index: number) => { setEditingItemIndex(index); setTempItem({ ...items[index] }); setIsAddItemSheetOpen(true); };
+
+  const removeItem = (index: number) => {
+    if (items.length === 1) { toast({ title: 'Cannot remove', description: 'At least one item is required.', variant: 'destructive' }); return; }
+    setItems((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleAddClient = () => {
+    if (!newClient.name.trim()) { toast({ title: 'Error', description: 'Client name is required', variant: 'destructive' }); return; }
+    const client: Client = { id: crypto.randomUUID(), ...newClient, type: 'customer', createdAt: new Date().toISOString() };
+    addClient(client);
+    setClientId(client.id);
+    setIsAddClientOpen(false);
+    setNewClient({ name: '', email: '', phone: '', address: '' });
+    toast({ title: 'Client added', description: `${client.name} has been added.` });
+  };
+
+  const handleSave = () => {
+    if (!clientId) { toast({ title: 'Error', description: 'Please select a client', variant: 'destructive' }); return; }
+    if (!salesmanId) { toast({ title: 'Error', description: 'Please select a salesman', variant: 'destructive' }); return; }
+    if (invoiceNumberMode === 'manual' && !invoiceNumber.trim()) { toast({ title: 'Error', description: 'Invoice number is required when manual mode is enabled', variant: 'destructive' }); return; }
+    if (invoices.some((invoice) => invoice.number === invoiceNumber && invoice.id !== existingInvoice?.id)) { toast({ title: 'Error', description: 'Invoice number already exists', variant: 'destructive' }); return; }
+    if (items.some((item) => !item.name.trim())) { toast({ title: 'Error', description: 'All items must have a name', variant: 'destructive' }); return; }
+    if (invoiceType === 'project' && !projectId) { toast({ title: 'Error', description: 'Please select a project for project invoices', variant: 'destructive' }); return; }
+    if (invoiceType === 'project' && selectedActivityIds.length === 0) { toast({ title: 'Error', description: 'Please select completed project activities for billing', variant: 'destructive' }); return; }
+    if (invoiceType === 'project' && projectInvoicePercentage <= 0) { toast({ title: 'Error', description: 'Project billing percentage must be greater than 0', variant: 'destructive' }); return; }
+
+    const now = new Date().toISOString();
+    const resolvedNumber = invoiceNumberMode === 'manual' ? invoiceNumber.trim() : invoiceNumber;
+
+    if (isEditing && existingInvoice) {
+      const updated: Invoice = {
+        ...existingInvoice,
+        number: resolvedNumber,
+        manualInvoiceNumber: invoiceNumberMode === 'manual' ? resolvedNumber : undefined,
+        invoiceNumberMode,
+        vatEnabled,
+        clientId,
+        items,
+        netTotal: grandTotal,
+        invoiceDate,
+        dueDate,
+        notes,
+        terms,
+        salesmanId,
+        invoiceType,
+        projectId: invoiceType === 'project' ? projectId : undefined,
+        selectedActivityIds: invoiceType === 'project' ? selectedActivityIds : undefined,
+        billingPercentage: invoiceType === 'project' ? projectInvoicePercentage : undefined,
+        billingValue: invoiceType === 'project' ? projectBillingValue : undefined,
+        projectSummary: invoiceType === 'project' ? projectSummary : undefined,
+        updatedAt: now,
+      };
+
+      try {
+        updateInvoice(updated);
+        repostSalesInvoice(existingInvoice, updated);
+      } catch (err) {
+        updateInvoice(existingInvoice);
+        toast({ title: 'Invoice update failed', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
+        return;
+      }
+
+      toast({ title: 'Invoice updated', description: `${updated.number} has been updated.` });
+    } else {
+      const newInvoice: Invoice = {
+        id: crypto.randomUUID(),
+        number: resolvedNumber,
+        manualInvoiceNumber: invoiceNumberMode === 'manual' ? resolvedNumber : undefined,
+        invoiceNumberMode,
+        vatEnabled,
+        clientId,
+        quotationId: sourceQuotation?.id,
+        invoiceType,
+        projectId: invoiceType === 'project' ? projectId : undefined,
+        selectedActivityIds: invoiceType === 'project' ? selectedActivityIds : undefined,
+        billingPercentage: invoiceType === 'project' ? projectInvoicePercentage : undefined,
+        billingValue: invoiceType === 'project' ? projectBillingValue : undefined,
+        projectSummary: invoiceType === 'project' ? projectSummary : undefined,
+        items,
+        netTotal: grandTotal,
+        status: 'draft',
+        invoiceDate,
+        dueDate,
+        notes,
+        terms,
+        salesmanId,
+        createdAt: now,
+        updatedAt: now,
+      };
+      addInvoice(newInvoice);
+
+      // Decrement stock for each item that has an itemId
+      items.forEach((li) => { if (li.itemId) adjustItemStock(li.itemId, -li.quantity); });
+
+      // Mark source quotation as converted
+      if (sourceQuotation) {
+        updateQuotation({ ...sourceQuotation, status: 'converted', convertedInvoiceId: newInvoice.id, updatedAt: now });
+      }
+
+      // Post journal using the shared posting service
+      try {
+        postSalesInvoice(newInvoice);
+      } catch (err) {
+        console.error('[InvoiceForm] Journal entry failed:', err);
+        toast({ title: 'Journal entry failed', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
+      }
+
+      toast({ title: 'Invoice created', description: `${newInvoice.number} has been created.` });
+      navigate(`/invoices/${newInvoice.id}`);
+      return;
+    }
+  };
+
+  const handleMarkAsSent = () => {
+    if (!existingInvoice) return;
+    const now = new Date().toISOString();
+    updateInvoice({ ...existingInvoice, status: 'sent', updatedAt: now });
+    toast({ title: 'Invoice sent', description: `${existingInvoice.number} marked as sent.` });
+  };
+
+  const handleDownloadPDF = async () => {
+    if (!existingInvoice) return;
+    const client = getClient(clientId);
+    try {
+      await generatePDF({ type: 'invoice', document: existingInvoice, client, settings});
+      toast({ title: 'PDF downloaded successfully' });
+    } catch (err) {
+      toast({ title: 'PDF generation failed', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
+    }
+  };
+
+  const handlePrint = async () => {
+    if (!existingInvoice) return;
+    const client = getClient(clientId);
+    try {
+      await printDocument({ type: 'invoice', document: existingInvoice, client, settings });
+    } catch (err) {
+      toast({ title: 'Print failed', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
+    }
+  };
+
+  const handleShare = () => {
+    if (!existingInvoice) return;
+    const client = getClient(clientId);
+    shareViaWhatsApp({ type: 'invoice', document: existingInvoice, client, settings });
+  };
+
+  useEffect(() => { if (isEditing && !existingInvoice) navigate('/invoices'); }, [isEditing, existingInvoice, navigate]);
+
+  const statusColors: Record<InvoiceStatus, string> = {
+    draft: 'bg-muted text-muted-foreground',
+    sent: 'bg-primary/10 text-primary',
+    paid: 'bg-success/10 text-success',
+    partial: 'bg-warning/10 text-warning',
+    overdue: 'bg-destructive/10 text-destructive',
+    cancelled: 'bg-muted text-muted-foreground',
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Sales Invoices</h1>
-          <p className="text-xs text-muted-foreground hidden sm:block">Manage invoices and track payments</p>
-        </div>
-        <Button asChild size="sm" className="hidden lg:flex">
-          <Link to="/invoices/new"><Plus className="mr-1.5 h-4 w-4" />New Invoice</Link>
-        </Button>
-      </div>
-
-      <div className="space-y-2">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8 h-9" />
+    <div className="space-y-3 pb-24 lg:pb-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <Button variant="ghost" size="icon" onClick={() => navigate('/invoices')} className="h-8 w-8 shrink-0">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="min-w-0">
+            <h1 className="text-lg font-bold tracking-tight truncate">
+              {isEditing ? existingInvoice?.number : 'New Invoice'}
+            </h1>
+            <p className="text-xs text-muted-foreground hidden sm:block truncate">
+              {sourceQuotation ? `From ${sourceQuotation.number}` : isEditing ? 'Edit invoice' : 'Create invoice'}
+            </p>
           </div>
-          <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
-            <CollapsibleTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 gap-1.5 sm:hidden">
-                <Filter className="h-4 w-4" /><ChevronDown className={`h-3 w-3 transition-transform ${filtersOpen ? 'rotate-180' : ''}`} />
-              </Button>
-            </CollapsibleTrigger>
-          </Collapsible>
-          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as InvoiceStatus | 'all')}>
-            <SelectTrigger className="w-[140px] h-9 hidden sm:flex"><SelectValue placeholder="Status" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="draft">Draft</SelectItem>
-              <SelectItem value="sent">Sent</SelectItem>
-              <SelectItem value="paid">Paid</SelectItem>
-              <SelectItem value="partial">Partial</SelectItem>
-              <SelectItem value="overdue">Overdue</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
-            </SelectContent>
-          </Select>
+          {isEditing && (
+            <Badge variant="outline" className={`${statusColors[currentStatus]} text-xs ml-1`}>
+              {currentStatus}
+            </Badge>
+          )}
         </div>
-        <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
-          <CollapsibleContent className="sm:hidden">
-            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as InvoiceStatus | 'all')}>
-              <SelectTrigger className="w-full h-9"><SelectValue placeholder="Filter by status" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="draft">Draft</SelectItem>
-                <SelectItem value="sent">Sent</SelectItem>
-                <SelectItem value="paid">Paid</SelectItem>
-                <SelectItem value="partial">Partial</SelectItem>
-                <SelectItem value="overdue">Overdue</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
-          </CollapsibleContent>
-        </Collapsible>
+        {isEditing && (
+          <div className="flex gap-1.5 shrink-0">
+            {(currentStatus === 'partial' || (existingInvoice?.status === 'sent' && currentStatus !== 'paid')) && (
+              <Button variant="outline" size="sm" onClick={() => navigate(`/invoices/${id}/payment`)} className="h-8 px-2">
+                <CreditCard className="h-4 w-4" />
+                <span className="hidden sm:inline ml-1.5">Payment</span>
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={handlePrint} className="h-8 px-2">
+              <Printer className="h-4 w-4" />
+              <span className="hidden sm:inline ml-1.5">Print</span>
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleDownloadPDF} className="h-8 px-2">
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline ml-1.5">PDF</span>
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleShare} className="h-8 px-2">
+              <Share2 className="h-4 w-4" />
+              <span className="hidden sm:inline ml-1.5">Share</span>
+            </Button>
+          </div>
+        )}
       </div>
 
-      {sortedInvoices.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-8">
-            <Receipt className="h-10 w-10 text-muted-foreground mb-3" />
-            <p className="text-sm text-muted-foreground mb-1">No invoices found</p>
-            <p className="text-xs text-muted-foreground mb-3">{search || statusFilter !== 'all' ? 'Try adjusting your filters' : 'Create your first invoice'}</p>
-            {!search && statusFilter === 'all' && (
-              <Button asChild size="sm"><Link to="/invoices/new"><Plus className="mr-1.5 h-4 w-4" />Create Invoice</Link></Button>
-            )}
+      {/* ✅ DATE COLUMN TOGGLE - S.No vs Date Logic */}
+      {isEditing && existingInvoice && (
+        <Card>
+          <CardContent className="px-3 py-3">
+            <div className="flex items-center justify-between rounded-md border p-3">
+              <div>
+                <Label className="text-xs">Show Date Column</Label>
+                <p className="text-[10px] text-muted-foreground">
+                  {showDateColumn 
+                    ? '📅 Date column visible | S.No hidden' 
+                    : '🔢 S.No visible | Date column hidden'}
+                </p>
+              </div>
+              <Switch 
+                checked={showDateColumn} 
+                onCheckedChange={setShowDateColumn} 
+              />
+            </div>
           </CardContent>
         </Card>
-      ) : (
-        <div className="space-y-2">
-          {sortedInvoices.map((invoice) => {
-              const client = getClient(invoice.clientId);
-              const displayStatus = getDisplayStatus(invoice.status, invoice.id, invoice.dueDate, invoice.netTotal);
-              return (
-                <Card key={invoice.id} className="hover:shadow-sm transition-shadow">
-                  <CardContent className="p-3">
-                    <div className="flex items-center gap-3">
-                      <div className="hidden xs:flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
-                        <Receipt className="h-4 w-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <p className="text-sm font-semibold truncate">{invoice.number}</p>
-                          {getStatusDot(displayStatus)}
-                          <span className="text-[10px] text-muted-foreground capitalize">{displayStatus}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <span className="truncate">{client?.name || 'No client'}</span>
-                          <span>•</span>
-                          <span className="truncate">{getSalesman(invoice.salesmanId || '')?.name || 'No salesman'}</span>
-                          <span>•</span>
-                          <span className="shrink-0">Due {new Date(invoice.dueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-sm font-semibold">{currencySymbol}{invoice.netTotal.toLocaleString('en-IN')}</span>
-                        <div className="flex gap-0.5">
-                          <Button variant="ghost" size="icon" asChild className="h-8 w-8"><Link to={`/invoices/${invoice.id}`}><Edit className="h-4 w-4" /></Link></Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><Trash2 className="h-4 w-4" /></Button></AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader><AlertDialogTitle>Delete Invoice</AlertDialogTitle><AlertDialogDescription>Delete {invoice.number}? This cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => deleteInvoice(invoice.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-        </div>
       )}
+
+      {/* ✅ INVOICE PRINT PREVIEW */}
+      {isEditing && existingInvoice && (
+        <Card>
+          <CardHeader className="py-2.5 px-3">
+            <CardTitle className="text-sm flex items-center justify-between">
+              <span>Invoice Preview</span>
+              <span className="text-xs font-normal text-muted-foreground">
+                {showDateColumn ? '📅 Showing Date column' : '🔢 Showing S.No column'}
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-3 pb-3">
+            <InvoicePrint
+              invoice={existingInvoice}
+              client={getClient(clientId)}
+              settings={settings}
+              showDateColumn={showDateColumn}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Client & Due Date (no status dropdown) */}
+      <Card>
+        <CardHeader className="py-2.5 px-3"><CardTitle className="text-sm">Client & Details</CardTitle></CardHeader>
+        <CardContent className="px-3 pb-3">
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Invoice Type</Label>
+              <RadioGroup value={invoiceType} onValueChange={(value) => {
+                setInvoiceType(value as 'normal' | 'project');
+                if (value !== 'project') {
+                  setProjectId('');
+                  setProjectInvoicePercentage(0);
+                }
+              }}>
+                <div className="flex flex-wrap gap-2">
+                  <label className="inline-flex items-center gap-2 rounded-2xl border px-3 py-2 cursor-pointer">
+                    <RadioGroupItem value="normal" />
+                    <span className="text-sm">Normal</span>
+                  </label>
+                  <label className="inline-flex items-center gap-2 rounded-2xl border px-3 py-2 cursor-pointer">
+                    <RadioGroupItem value="project" />
+                    <span className="text-sm">Project</span>
+                  </label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {invoiceType === 'project' && (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Project *</Label>
+                    <Select value={projectId} onValueChange={setProjectId}>
+                      <SelectTrigger className="flex-1 h-9"><SelectValue placeholder="Select project" /></SelectTrigger>
+                      <SelectContent>
+                        {projects.map((project) => (
+                          <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Project Billing %</Label>
+                    <Input type="number" value={projectInvoicePercentage} disabled className="h-9 bg-muted/30" />
+                    <p className="text-[10px] text-muted-foreground">Calculated from selected project activities.</p>
+                  </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 mt-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Project Billing Value</Label>
+                    <Input type="text" value={`${currencySymbol}${projectBillingValue.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}`} disabled className="h-9 bg-muted/30" />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1.5 sm:col-span-3">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <Label className="text-xs">Invoice Number</Label>
+                    <p className="text-[10px] text-muted-foreground">{invoiceNumberMode === 'manual' ? 'Manually enter the invoice number' : 'Automatically generated invoice number'}</p>
+                  </div>
+                  {canUseManualInvoiceNumber && (
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={invoiceNumberMode === 'manual'}
+                        onCheckedChange={(value) => setInvoiceNumberMode(value ? 'manual' : 'auto')}
+                        disabled={!settings.allowManualInvoiceNumberEntry}
+                      />
+                      <span className="text-xs text-muted-foreground">Manual</span>
+                    </div>
+                  )}
+                </div>
+                <Input
+                  value={invoiceNumber}
+                  onChange={(e) => setInvoiceNumber(e.target.value)}
+                  disabled={invoiceNumberMode !== 'manual'}
+                  className="h-9"
+                />
+                {!canUseManualInvoiceNumber && (
+                  <p className="text-[10px] text-muted-foreground">Manual invoice numbers are disabled in settings.</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1.5 sm:col-span-3">
+              <div className="flex items-center justify-between rounded-md border p-3">
+                <div>
+                  <Label className="text-xs">VAT Enabled</Label>
+                  <p className="text-[10px] text-muted-foreground">Enable or disable VAT for this invoice.</p>
+                </div>
+                <Switch checked={vatEnabled} onCheckedChange={(value) => setVatEnabled(value)} />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Client *</Label>
+              <div className="flex gap-1.5">
+                <Select value={clientId} onValueChange={setClientId}>
+                  <SelectTrigger className="flex-1 h-9"><SelectValue placeholder="Select client" /></SelectTrigger>
+                  <SelectContent>
+                    {clients.map((client) => (
+                      <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => setIsAddClientOpen(true)}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Invoice Date</Label>
+              <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} className="h-9" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Due Date</Label>
+              <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="h-9" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Salesman *</Label>
+              <div className="flex gap-1.5">
+                <Select value={salesmanId} onValueChange={setSalesmanId}>
+                  <SelectTrigger className="flex-1 h-9"><SelectValue placeholder="Select salesman" /></SelectTrigger>
+                  <SelectContent>
+                    {salesmen.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
+                  </SelectContent>
+                </Select>
+                <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => setIsAddSalesmanOpen(true)}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {invoiceType === 'project' && selectedProject && projectSummary && (
+        <Card>
+          <CardHeader className="py-2.5 px-3"><CardTitle className="text-sm">Project Summary</CardTitle></CardHeader>
+          <CardContent className="px-3 pb-3 space-y-3">
+            <div className="grid gap-3 sm:grid-cols-5">
+              <div className="rounded-md border bg-muted/20 p-3">
+                <p className="text-[11px] uppercase text-muted-foreground">Project Value</p>
+                <p className="text-sm font-semibold">{currencySymbol}{projectSummary.projectTotalValue.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
+              </div>
+              <div className="rounded-md border bg-muted/20 p-3">
+                <p className="text-[11px] uppercase text-muted-foreground">Previous</p>
+                <p className="text-sm font-semibold">{projectSummary.previousPercentage.toFixed(2)}%</p>
+                <p className="text-xs text-muted-foreground">{currencySymbol}{projectSummary.previousAmount.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
+              </div>
+              <div className="rounded-md border bg-muted/20 p-3">
+                <p className="text-[11px] uppercase text-muted-foreground">Current</p>
+                <p className="text-sm font-semibold">{projectSummary.currentPercentage.toFixed(2)}%</p>
+                <p className="text-xs text-muted-foreground">{currencySymbol}{projectSummary.currentAmount.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
+              </div>
+              <div className="rounded-md border bg-muted/20 p-3">
+                <p className="text-[11px] uppercase text-muted-foreground">Total Progress</p>
+                <p className="text-sm font-semibold">{projectSummary.totalInvoicedPercentage.toFixed(2)}%</p>
+                <p className="text-xs text-muted-foreground">{currencySymbol}{projectSummary.totalInvoicedAmount.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
+              </div>
+              <div className="rounded-md border bg-muted/20 p-3">
+                <p className="text-[11px] uppercase text-muted-foreground">Remaining</p>
+                <p className="text-sm font-semibold">{projectSummary.remainingPercentage.toFixed(2)}%</p>
+                <p className="text-xs text-muted-foreground">{currencySymbol}{projectSummary.remainingAmount.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
+              </div>
+            </div>
+            <Progress value={Math.min(100, Math.max(0, projectSummary.totalInvoicedPercentage))} />
+          </CardContent>
+        </Card>
+      )}
+
+      {invoiceType === 'project' && selectedProject && (
+        <Card>
+          <CardHeader className="py-2.5 px-3"><CardTitle className="text-sm">Project Activities</CardTitle></CardHeader>
+          <CardContent className="px-3 pb-3 space-y-3">
+            <p className="text-xs text-muted-foreground">Select the project activities to include on this invoice. The current billing percentage and value are calculated from these selections.</p>
+            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+              <span>{selectedProjectActivities.length} activity selected</span>
+              <span>Billing {projectInvoicePercentage.toFixed(2)}% / {currencySymbol}{projectBillingValue.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
+            </div>
+            <div className="space-y-2">
+              {projectActivities.length > 0 ? projectActivities.map((activity) => (
+                <label key={activity.id} className="flex items-center gap-3 rounded-md border p-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedActivityIds.includes(activity.id)}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setSelectedActivityIds((prev) => checked ? [...prev, activity.id] : prev.filter((id) => id !== activity.id));
+                    }}
+                    className="h-4 w-4 rounded border-muted-foreground text-primary focus:ring-primary"
+                  />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{activity.name}</p>
+                    <p className="text-xs text-muted-foreground">{activity.percentage}% | {currencySymbol}{activity.value.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
+                  </div>
+                </label>
+              )) : (
+                <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">No activities defined for this project.</div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Items */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between py-2.5 px-3">
+          <CardTitle className="text-sm">Items</CardTitle>
+          <Button type="button" variant="outline" size="sm" onClick={addItem} className="h-7 text-xs">
+            <Plus className="mr-1 h-3.5 w-3.5" />Add
+          </Button>
+        </CardHeader>
+        <CardContent className="px-3 pb-3">
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-xs text-muted-foreground">
+                  {showDateColumn ? (
+                    // ✅ When Date Column is ON: Show DATE, hide S.No
+                    <>
+                      <th className="text-left py-2 w-24">Date</th>
+                      <th className="text-left py-2">Description</th>
+                      <th className="text-right py-2 w-20">Qty</th>
+                      <th className="text-left py-2 w-20">Unit</th>
+                      <th className="text-right py-2 w-24">Rate</th>
+                      <th className="text-right py-2 w-24">Amount</th>
+                      <th className="w-8"></th>
+                    </>
+                  ) : (
+                    // ✅ When Date Column is OFF: Show S.No, hide Date
+                    <>
+                      <th className="text-left py-2 w-8">S.No</th>
+                      <th className="text-left py-2">Description</th>
+                      <th className="text-right py-2 w-20">Qty</th>
+                      <th className="text-left py-2 w-20">Unit</th>
+                      <th className="text-right py-2 w-24">Rate</th>
+                      <th className="text-right py-2 w-24">Amount</th>
+                      <th className="w-8"></th>
+                    </>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item, index) => (
+                  <tr key={item.id} className="border-b last:border-0">
+                    {showDateColumn ? (
+                      // ✅ Date Column ON: Show invoice date instead of S.No
+                      <>
+                        <td className="py-2 text-muted-foreground whitespace-nowrap">
+                          {invoiceDate ? new Date(invoiceDate).toLocaleDateString('en-GB') : '-'}
+                        </td>
+                        <td className="py-2 min-w-[180px]">
+                          <div className="space-y-1">
+                            <ItemPicker
+                              value={item.itemId}
+                              fallbackName={item.name}
+                              onSelect={(it) => selectItemForRow(index, it)}
+                            />
+                            <Textarea value={item.description} onChange={(e) => updateItem(index, 'description', e.target.value)} placeholder="Description (supports multiline/bullets)" rows={2} className="text-sm" />
+                          </div>
+                        </td>
+                        <td className="py-2"><Input type="number" min="1" value={item.quantity} onChange={(e) => updateItem(index, 'quantity', e.target.value)} className="h-8 text-right" /></td>
+                        <td className="py-2"><Input value={item.unit ?? ''} onChange={(e) => updateItem(index, 'unit', e.target.value)} placeholder="—" className="h-8 text-left" /></td>
+                        <td className="py-2"><Input type="number" min="0" step="0.01" value={item.rate} onChange={(e) => updateItem(index, 'rate', e.target.value)} className="h-8 text-right" /></td>
+                        <td className="py-2 text-right font-medium">{currencySymbol}{(item.total + (item.vatApplicable ? (item.vatAmount ?? 0) : 0)).toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</td>
+                        <td className="py-2"><Button type="button" variant="ghost" size="icon" onClick={() => removeItem(index)} className="h-7 w-7"><Trash2 className="h-3.5 w-3.5" /></Button></td>
+                      </>
+                    ) : (
+                      // ✅ Date Column OFF: Show S.No
+                      <>
+                        <td className="py-2 text-muted-foreground">{index + 1}</td>
+                        <td className="py-2 min-w-[180px]">
+                          <div className="space-y-1">
+                            <ItemPicker
+                              value={item.itemId}
+                              fallbackName={item.name}
+                              onSelect={(it) => selectItemForRow(index, it)}
+                            />
+                            <Textarea value={item.description} onChange={(e) => updateItem(index, 'description', e.target.value)} placeholder="Description (supports multiline/bullets)" rows={2} className="text-sm" />
+                          </div>
+                        </td>
+                        <td className="py-2"><Input type="number" min="1" value={item.quantity} onChange={(e) => updateItem(index, 'quantity', e.target.value)} className="h-8 text-right" /></td>
+                        <td className="py-2"><Input value={item.unit ?? ''} onChange={(e) => updateItem(index, 'unit', e.target.value)} placeholder="—" className="h-8 text-left" /></td>
+                        <td className="py-2"><Input type="number" min="0" step="0.01" value={item.rate} onChange={(e) => updateItem(index, 'rate', e.target.value)} className="h-8 text-right" /></td>
+                        <td className="py-2 text-right font-medium">{currencySymbol}{(item.total + (item.vatApplicable ? (item.vatAmount ?? 0) : 0)).toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</td>
+                        <td className="py-2"><Button type="button" variant="ghost" size="icon" onClick={() => removeItem(index)} className="h-7 w-7"><Trash2 className="h-3.5 w-3.5" /></Button></td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="md:hidden space-y-2">
+            {items.map((item, index) => (
+              <div key={item.id} className="p-2.5 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors" onClick={() => editItemMobile(index)}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      {showDateColumn ? (
+                        // Date Column ON: Show Date
+                        <span className="text-xs text-muted-foreground">
+                          {invoiceDate ? new Date(invoiceDate).toLocaleDateString('en-GB') : '-'}
+                        </span>
+                      ) : (
+                        // Date Column OFF: Show S.No
+                        <span className="text-xs text-muted-foreground">{index + 1}.</span>
+                      )}
+                      <p className="text-sm font-medium truncate">{item.name || 'Untitled item'}</p>
+                    </div>
+                    {item.description && <p className="text-xs text-muted-foreground truncate mt-0.5">{item.description}</p>}
+                    <p className="text-xs text-muted-foreground mt-1">{item.quantity} × {currencySymbol}{item.rate.toLocaleString('en-IN')}</p>
+                  </div>
+                  <div className="text-right shrink-0"><p className="text-sm font-semibold">{currencySymbol}{item.total.toLocaleString('en-IN')}</p><Edit2 className="h-3.5 w-3.5 text-muted-foreground mt-1 ml-auto" /></div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 flex justify-end">
+            <div className="w-full sm:w-64 rounded-lg bg-primary/10 p-2.5 space-y-1">
+              <div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">Subtotal</span><span>{currencySymbol}{netTotal.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span></div>
+              {vatEnabled && <div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">VAT ({vatRate}%)</span><span>{currencySymbol}{vatTotal.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span></div>}
+              <div className="flex items-center justify-between text-sm font-bold pt-1 border-t"><span>{vatEnabled ? 'Grand Total' : 'Total'}</span><span>{currencySymbol}{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span></div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="py-2.5 px-3"><CardTitle className="text-sm">Notes & Terms</CardTitle></CardHeader>
+        <CardContent className="px-3 pb-3 space-y-3">
+          <div className="space-y-1.5"><Label htmlFor="notes" className="text-xs">Notes</Label><Textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes for client..." rows={2} className="resize-none text-sm" /></div>
+          <div className="space-y-1.5"><Label htmlFor="terms" className="text-xs">Terms & Conditions</Label><Textarea id="terms" value={terms} onChange={(e) => setTerms(e.target.value)} placeholder="Payment terms..." rows={2} className="resize-none text-sm" /></div>
+        </CardContent>
+      </Card>
+
+      {/* Action Buttons */}
+      <div className="fixed bottom-16 lg:bottom-0 left-0 right-0 lg:relative p-3 lg:p-0 bg-background border-t lg:border-0 z-30">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row gap-2 sm:justify-between lg:max-w-none">
+          <div className="flex gap-2">
+            {currentStatus === 'draft' && isEditing && (
+              <Button onClick={handleMarkAsSent} size="sm" className="flex-1 sm:flex-none h-9">
+                <Send className="mr-1.5 h-4 w-4" />Mark as Sent
+              </Button>
+            )}
+            {(currentStatus === 'partial' || (existingInvoice?.status === 'sent' && currentStatus !== 'paid')) && isEditing && (
+              <Button onClick={() => navigate(`/invoices/${id}/payment`)} size="sm" className="flex-1 sm:flex-none h-9">
+                <CreditCard className="mr-1.5 h-4 w-4" />Record Payment
+              </Button>
+            )}
+          </div>
+          {currentStatus !== 'cancelled' && (
+            <Button onClick={handleSave} variant="outline" size="sm" className="h-9">
+              <Save className="mr-1.5 h-4 w-4" />Save {isEditing ? 'Changes' : 'Draft'}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Mobile Item Sheet */}
+      <Sheet open={isAddItemSheetOpen} onOpenChange={(open) => { setIsAddItemSheetOpen(open); if (!open) { setEditingItemIndex(null); setTempItem({ id: '', name: '', description: '', quantity: 1, rate: 0, total: 0 }); } }}>
+        <SheetContent side="bottom" className="h-auto max-h-[85vh]">
+          <SheetHeader className="text-left"><SheetTitle>{editingItemIndex !== null ? 'Edit Item' : 'Add Item'}</SheetTitle><SheetDescription>{editingItemIndex !== null ? 'Update item details' : 'Add a new line item'}</SheetDescription></SheetHeader>
+          <div className="space-y-3 mt-4">
+            <div className="space-y-1.5"><Label className="text-xs">Item Name *</Label><Input value={tempItem.name} onChange={(e) => setTempItem({ ...tempItem, name: e.target.value })} placeholder="Item name" className="h-10" /></div>
+            <div className="space-y-1.5"><Label className="text-xs">Description</Label><Input value={tempItem.description} onChange={(e) => setTempItem({ ...tempItem, description: e.target.value })} placeholder="Description" className="h-10" /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5"><Label className="text-xs">Quantity</Label><Input type="number" min="1" value={tempItem.quantity} onChange={(e) => setTempItem({ ...tempItem, quantity: Number(e.target.value) || 1 })} className="h-10" /></div>
+              <div className="space-y-1.5"><Label className="text-xs">Rate ({currencySymbol})</Label><Input type="number" min="0" step="0.01" value={tempItem.rate} onChange={(e) => setTempItem({ ...tempItem, rate: Number(e.target.value) || 0 })} className="h-10" /></div>
+            </div>
+            <div className="rounded-lg bg-muted p-3"><div className="flex justify-between text-sm font-medium"><span>Total</span><span>{currencySymbol}{(tempItem.quantity * tempItem.rate).toLocaleString('en-IN')}</span></div></div>
+          </div>
+          <div className="flex gap-2 mt-6">
+            {editingItemIndex !== null && (<Button variant="destructive" onClick={() => { removeItem(editingItemIndex); setIsAddItemSheetOpen(false); setEditingItemIndex(null); }} className="flex-1"><Trash2 className="mr-1.5 h-4 w-4" />Delete</Button>)}
+            <Button onClick={saveMobileItem} className="flex-1"><Save className="mr-1.5 h-4 w-4" />{editingItemIndex !== null ? 'Update' : 'Add'}</Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Dialog open={isAddClientOpen} onOpenChange={setIsAddClientOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader><DialogTitle>Add New Client</DialogTitle><DialogDescription>Quick add a new client</DialogDescription></DialogHeader>
+          <div className="grid gap-3 py-3">
+            <div className="space-y-1.5"><Label htmlFor="clientName" className="text-xs">Name *</Label><Input id="clientName" value={newClient.name} onChange={(e) => setNewClient({ ...newClient, name: e.target.value })} placeholder="Client name" className="h-9" /></div>
+            <div className="space-y-1.5"><Label htmlFor="clientEmail" className="text-xs">Email</Label><Input id="clientEmail" type="email" value={newClient.email} onChange={(e) => setNewClient({ ...newClient, email: e.target.value })} placeholder="email@example.com" className="h-9" /></div>
+            <div className="space-y-1.5"><Label htmlFor="clientPhone" className="text-xs">Phone</Label><Input id="clientPhone" value={newClient.phone} onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })} placeholder="+91 98765 43210" className="h-9" /></div>
+            <div className="space-y-1.5"><Label htmlFor="clientAddress" className="text-xs">Address</Label><Input id="clientAddress" value={newClient.address} onChange={(e) => setNewClient({ ...newClient, address: e.target.value })} placeholder="Address" className="h-9" /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setIsAddClientOpen(false)}>Cancel</Button>
+            <Button size="sm" onClick={handleAddClient}>Add Client</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={isAddSalesmanOpen} onOpenChange={setIsAddSalesmanOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Add Salesman</DialogTitle>
+            <DialogDescription>Quick add a new salesman</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-3">
+            <div className="space-y-1.5"><Label className="text-xs">Name *</Label><Input value={newSalesman.name} onChange={(e) => setNewSalesman({ ...newSalesman, name: e.target.value })} className="h-9" /></div>
+            <div className="space-y-1.5"><Label className="text-xs">Phone</Label><Input value={newSalesman.phone} onChange={(e) => setNewSalesman({ ...newSalesman, phone: e.target.value })} className="h-9" /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setIsAddSalesmanOpen(false)}>Cancel</Button>
+            <Button size="sm" onClick={() => {
+              if (!newSalesman.name.trim()) return toast({ title: 'Error', description: 'Salesman name required', variant: 'destructive' });
+              const s = { id: crypto.randomUUID(), name: newSalesman.name, phone: newSalesman.phone, createdAt: new Date().toISOString() };
+              addSalesman(s);
+              setSalesmanId(s.id);
+              setIsAddSalesmanOpen(false);
+              setNewSalesman({ name: '', phone: '' });
+              toast({ title: 'Salesman added', description: `${s.name} created.` });
+            }}>Add Salesman</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
