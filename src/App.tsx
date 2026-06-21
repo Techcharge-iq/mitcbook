@@ -10,14 +10,13 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useToast } from "@/hooks/use-toast";
 
-
 import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
 
-const QuotationsList = lazy(() => import("./pages/QuotationsList"));
-const QuotationForm = lazy(() => import("./pages/QuotationForm"));
-const InvoicesList = lazy(() => import("./pages/InvoicesList"));
-const InvoiceForm = lazy(() => import("./pages/InvoiceForm"));
+const QuotationsList = lazy(() => import("@/pages/QuotationsList"));
+const QuotationForm = lazy(() => import("@/pages/QuotationForm"));
+const InvoicesList = lazy(() => import("@/pages/InvoicesList"));
+const InvoiceForm = lazy(() => import("@/pages/InvoiceForm"));
 const PurchaseInvoicesList = lazy(() => import("./pages/PurchaseInvoicesList"));
 const PurchaseInvoiceForm = lazy(() => import("./pages/PurchaseInvoiceForm"));
 const ProjectsList = lazy(() => import("./pages/ProjectsList"));
@@ -63,7 +62,6 @@ function StorageErrorListener() {
     return () => window.removeEventListener("bookit:storage-error", handler);
   }, [toast]);
 
-
   return null;
 }
 
@@ -77,7 +75,6 @@ const App = () => (
             <Sonner />
             <StorageErrorListener />
 
-            {/* IMPORTANT: HashRouter for Electron */}
             <HashRouter>
               <AppLayout>
                 <Suspense fallback={<div className="flex items-center justify-center h-full w-full">Loading…</div>}>

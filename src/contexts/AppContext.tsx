@@ -161,6 +161,66 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const companyKey = (key: string) => `app_${key}_${selectedCompanyId}`;
 
+  // ✅ NEW: Sync companies from Supabase on load
+  useEffect(() => {
+    let cancelled = false;
+    
+    (async () => {
+      try {
+        // Check if we're in a browser environment with Supabase
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { data: sess } = await supabase.auth.getSession();
+        const uid = sess.session?.user?.id;
+        
+        if (!uid || cancelled) return;
+        
+        // Fetch unique companies from business_settings
+        const { data, error } = await supabase
+          .from('business_settings')
+          .select('company_id, name')
+          .eq('user_id', uid);
+        
+        if (cancelled) return;
+        
+        if (!error && data && data.length > 0) {
+          // Create unique list of companies
+          const uniqueCompanies = Array.from(
+            new Map(data.map(item => [
+              item.company_id || 'default', 
+              { 
+                id: item.company_id || 'default', 
+                name: item.name || 'Default Company' 
+              }
+            ]))
+          ).map(([_, value]) => value);
+          
+          // Merge with existing companies
+          setCompanies(prev => {
+            const existingMap = new Map(prev.map(c => [c.id, c]));
+            uniqueCompanies.forEach(company => {
+              if (!existingMap.has(company.id)) {
+                existingMap.set(company.id, company);
+              }
+            });
+            return Array.from(existingMap.values());
+          });
+          
+          // If selected company doesn't exist, select the first one
+          const currentCompanyExists = uniqueCompanies.some(c => c.id === selectedCompanyId);
+          if (!currentCompanyExists && uniqueCompanies.length > 0) {
+            setSelectedCompanyId(uniqueCompanies[0].id);
+          }
+          
+          console.log('✅ Companies synced from Supabase:', uniqueCompanies.length);
+        }
+      } catch (error) {
+        console.error('Failed to load companies from Supabase:', error);
+      }
+    })();
+    
+    return () => { cancelled = true; };
+  }, []); // Run once on mount
+
   // Shared collections sync with the LAN server when one is configured;
   // otherwise they fall back to localStorage.
   const [clients, setClients] = useRemoteCollection<Client>('clients', companyKey('clients'), []);
@@ -177,6 +237,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [salesmen, setSalesmen] = useRemoteCollection<Salesman>('salesmen', companyKey('salesmen'), []);
   const [settings, setSettings] = useLocalStorage<BusinessSettings>(companyKey('settings'), defaultSettings);
   const [auditLog, setAuditLog] = useLocalStorage<AuditEntry[]>(companyKey('audit_log'), []);
+
+  // ✅ DEBUG: Log invoices when they change
+  useEffect(() => {
+    console.log('📊 [AppContext] Invoices loaded:', invoices.length);
+    if (invoices.length > 0) {
+      console.log('📊 [AppContext] First invoice:', invoices[0]);
+    } else {
+      console.warn('⚠️ [AppContext] No invoices found!');
+    }
+  }, [invoices]);
 
   // Cloud sync for business_settings (per signed-in user, per company)
   useEffect(() => {
@@ -886,10 +956,54 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const newCompany: Company = { id, name };
     setCompanies((prev) => [...prev, newCompany]);
     setSelectedCompanyId(id);
+    
+    // ✅ Also create an entry in business_settings for this company
+    (async () => {
+      try {
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { data: sess } = await supabase.auth.getSession();
+        const uid = sess.session?.user?.id;
+        if (!uid) return;
+        
+        await supabase.from('business_settings').insert({
+          user_id: uid,
+          company_id: id,
+          name: name,
+          email: settings.email || '',
+          phone: settings.phone || '',
+          address: settings.address || '',
+          currency: settings.currency || 'OMR',
+          vat_enabled: settings.vatEnabled ?? true,
+          default_vat_percentage: settings.defaultVatPercentage ?? 5,
+        });
+        console.log('✅ Company synced to Supabase:', name);
+      } catch (error) {
+        console.error('Failed to sync company to Supabase:', error);
+      }
+    })();
   };
 
   const updateCompany = (id: string, name: string) => {
     setCompanies((prev) => prev.map((company) => (company.id === id ? { ...company, name } : company)));
+    
+    // ✅ Also update in business_settings
+    (async () => {
+      try {
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { data: sess } = await supabase.auth.getSession();
+        const uid = sess.session?.user?.id;
+        if (!uid) return;
+        
+        await supabase
+          .from('business_settings')
+          .update({ name })
+          .eq('user_id', uid)
+          .eq('company_id', id);
+        console.log('✅ Company updated in Supabase:', name);
+      } catch (error) {
+        console.error('Failed to update company in Supabase:', error);
+      }
+    })();
   };
 
   const deleteCompany = (id: string) => {
@@ -901,6 +1015,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       return updated;
     });
+
+    // ✅ Also delete from business_settings
+    (async () => {
+      try {
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { data: sess } = await supabase.auth.getSession();
+        const uid = sess.session?.user?.id;
+        if (!uid) return;
+        
+        await supabase
+          .from('business_settings')
+          .delete()
+          .eq('user_id', uid)
+          .eq('company_id', id);
+        console.log('✅ Company deleted from Supabase:', id);
+      } catch (error) {
+        console.error('Failed to delete company from Supabase:', error);
+      }
+    })();
 
     try {
       const keys = ['clients', 'quotations', 'invoices', 'purchase_invoices', 'payments', 'accounts', 'journal_entries', 'account_balances', 'settings', 'vouchers', 'items', 'audit_log'];

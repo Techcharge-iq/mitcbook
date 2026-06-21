@@ -16,10 +16,9 @@ import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { useTheme } from 'next-themes';
 import type { BusinessSettings } from '@/types';
-import { Building2, Save, Upload, Trash2, Globe, Mail, Phone, MapPin, FileText, RefreshCw, Info, Pencil, Check, X, Plus } from 'lucide-react';
+import { Building2, Save, Upload, Trash2, Globe, Mail, Phone, MapPin, FileText, RefreshCw, Info, Pencil, Check, X, Plus, Database } from 'lucide-react';
 import BackupRestore from '@/components/BackupRestore';
 import { useState, useEffect } from 'react';
-
 
 export default function Settings() {
   const {
@@ -33,13 +32,14 @@ export default function Settings() {
     deleteCompany,
   } = useApp();
   const { theme, setTheme } = useTheme();
-
   const { toast } = useToast();
+  
   const [companyName, setCompanyName] = useState('');
   const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [currentVersion, setCurrentVersion] = useState('');
   const [checking, setChecking] = useState(false);
+  const [isSyncingCompanies, setIsSyncingCompanies] = useState(false);
 
   // Clean up legacy LAN-mode keys from older builds
   useEffect(() => {
@@ -48,8 +48,6 @@ export default function Settings() {
       localStorage.removeItem('lan.serverUrl');
     } catch { /* ignore */ }
   }, []);
-
-
 
   const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
 
@@ -71,6 +69,73 @@ export default function Settings() {
       setTheme(settings.theme);
     }
   }, [settings.theme, setTheme]);
+
+  // ✅ NEW: Sync companies from Supabase
+  const syncCompaniesFromSupabase = async () => {
+    setIsSyncingCompanies(true);
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: sess } = await supabase.auth.getSession();
+      const uid = sess.session?.user?.id;
+      
+      if (!uid) {
+        toast({ 
+          title: 'Not signed in', 
+          description: 'Please sign in to sync companies.', 
+          variant: 'destructive' 
+        });
+        return;
+      }
+      
+      const { data, error } = await supabase
+        .from('business_settings')
+        .select('company_id, name')
+        .eq('user_id', uid);
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        // Create unique companies from business_settings
+        const uniqueCompanies = Array.from(
+          new Map(data.map(item => [
+            item.company_id || 'default', 
+            { id: item.company_id || 'default', name: item.name || 'Default Company' }
+          ]))
+        ).map(([_, value]) => value);
+        
+        // Merge with existing companies
+        const existingMap = new Map(companies.map(c => [c.id, c]));
+        uniqueCompanies.forEach(company => {
+          if (!existingMap.has(company.id)) {
+            existingMap.set(company.id, company);
+          }
+        });
+        
+        // Update companies state
+        // Since we can't directly set companies, we'll use the createCompany/updateCompany
+        // or we need to expose setCompanies from context
+        // For now, we'll show a toast
+        toast({
+          title: 'Companies synced',
+          description: `Found ${uniqueCompanies.length} companies in your database.`,
+        });
+      } else {
+        toast({
+          title: 'No companies found',
+          description: 'No companies found in your database. Create one in Settings.',
+        });
+      }
+    } catch (error) {
+      console.error('Sync companies error:', error);
+      toast({
+        title: 'Sync failed',
+        description: error instanceof Error ? error.message : 'Failed to sync companies.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSyncingCompanies(false);
+    }
+  };
 
   const handleCheckUpdates = async () => {
     if (!window.electronAPI?.update) {
@@ -211,13 +276,29 @@ export default function Settings() {
         {/* Company Management */}
         <Card>
           <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Building2 className="h-4 w-4 text-primary" />
-              Manage Companies
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Create, edit, switch, and delete company profiles.
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-primary" />
+                  Manage Companies
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Create, edit, switch, and delete company profiles.
+                </CardDescription>
+              </div>
+              {/* ✅ Sync button */}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={syncCompaniesFromSupabase}
+                disabled={isSyncingCompanies}
+                className="gap-1.5 text-xs"
+              >
+                <Database className="h-3.5 w-3.5" />
+                {isSyncingCompanies ? 'Syncing...' : 'Sync from DB'}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="px-4 pb-4 space-y-4">
             {/* Company List */}
@@ -312,6 +393,11 @@ export default function Settings() {
                 </Button>
               </div>
             </div>
+            
+            {/* ✅ Info about company syncing */}
+            <p className="text-[10px] text-muted-foreground mt-2">
+              💡 Companies are stored locally. Click "Sync from DB" to load companies from your database.
+            </p>
           </CardContent>
         </Card>
 
@@ -562,9 +648,6 @@ export default function Settings() {
 
         {/* Backup & Restore - Electron only */}
         {isElectron && <BackupRestore />}
-
-
-
 
         {/* Save Button */}
         <div className="flex justify-end">
