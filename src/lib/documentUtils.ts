@@ -285,7 +285,7 @@ export async function generatePDFBlob({ type, document: docData, client, setting
               ${settings.email || ''}
               ${settings.phone ? ` • ${settings.phone}<br>` : ''}
               ${settings.address ? `${settings.address}<br>` : ''}
-              ${settings.taxNumber ? `GST: ${settings.taxNumber}` : ''}
+              ${settings.taxNumber ? `VAT: ${settings.taxNumber}` : ''}
             </div>
           </div>
         </div>

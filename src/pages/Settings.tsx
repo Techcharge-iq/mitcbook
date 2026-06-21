@@ -388,9 +388,9 @@ export default function Settings() {
               <div className="space-y-1.5">
                 <Label htmlFor="taxNumber" className="text-xs flex items-center gap-1.5">
                   <FileText className="h-3 w-3 text-muted-foreground" />
-                  GST/Tax Number
+                  VAT/Tax Number
                 </Label>
-                <Input id="taxNumber" value={settings.taxNumber || ''} onChange={(e) => handleChange('taxNumber', e.target.value)} placeholder="GSTIN" className="h-9" />
+                <Input id="taxNumber" value={settings.taxNumber || ''} onChange={(e) => handleChange('taxNumber', e.target.value)} placeholder="VAT" className="h-9" />
               </div>
             </div>
             <div className="space-y-1.5">
