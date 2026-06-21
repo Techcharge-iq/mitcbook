@@ -137,6 +137,7 @@ export interface Invoice {
   notes: string;
   terms: string;
   createdAt: string;
+  showDateColumn?: boolean;
   updatedAt: string;
 }
 

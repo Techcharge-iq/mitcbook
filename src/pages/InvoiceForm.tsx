@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/sheet';
 import { useToast } from '@/hooks/use-toast';
 import { currencySymbols, type Invoice, type LineItem, type InvoiceStatus, type Client } from '@/types';
-import { Plus, Trash2, Save, ArrowLeft, Send, Download, Share2, Edit2, CreditCard, Printer, List } from 'lucide-react';
+import { Plus, Trash2, Save, ArrowLeft, Send, Download, Share2, Edit2, CreditCard, Printer } from 'lucide-react';
 import { generatePDF, printDocument, shareViaWhatsApp } from '@/lib/documentUtils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ItemPicker } from '@/components/ItemPicker';
@@ -49,8 +49,16 @@ export default function InvoiceForm() {
   const sourceQuotation = fromQuotationId ? quotations.find((q) => q.id === fromQuotationId) : null;
   const currencySymbol = currencySymbols[settings.currency];
 
-  // ✅ State for date column toggle (default: true - show date, hide S.No)
-  const [showDateColumn, setShowDateColumn] = useState(true);
+  // ✅ State for date column toggle - OFF by default
+  // If editing, load from existing invoice, otherwise default to false
+  const [showDateColumn, setShowDateColumn] = useState(() => {
+    // When editing, use the saved value from the invoice
+    if (existingInvoice && existingInvoice.showDateColumn !== undefined) {
+      return existingInvoice.showDateColumn;
+    }
+    // Default: OFF (false) - Show S.No, hide Date
+    return false;
+  });
 
   const defaultDueDate = new Date();
   defaultDueDate.setDate(defaultDueDate.getDate() + 30);
@@ -77,7 +85,7 @@ export default function InvoiceForm() {
       quantity: 1, 
       rate: 0, 
       total: 0,
-      itemDate: new Date().toISOString().split('T')[0] // ✅ ADD item date
+      itemDate: new Date().toISOString().split('T')[0]
     }]
   );
 
@@ -94,7 +102,7 @@ export default function InvoiceForm() {
     quantity: 1, 
     rate: 0, 
     total: 0,
-    itemDate: new Date().toISOString().split('T')[0] // ✅ ADD item date
+    itemDate: new Date().toISOString().split('T')[0]
   });
 
   const canUseManualInvoiceNumber = settings.allowManualInvoiceNumberEntry || existingInvoice?.invoiceNumberMode === 'manual';
@@ -120,6 +128,19 @@ export default function InvoiceForm() {
     () => projectActivities.filter((activity) => selectedActivityIds.includes(activity.id)),
     [projectActivities, selectedActivityIds],
   );
+
+  // ✅ Load saved toggle state when editing
+  useEffect(() => {
+    if (isEditing && existingInvoice) {
+      // Load the saved showDateColumn value from the invoice
+      if (existingInvoice.showDateColumn !== undefined) {
+        setShowDateColumn(existingInvoice.showDateColumn);
+      } else {
+        // If not saved, default to false (OFF)
+        setShowDateColumn(false);
+      }
+    }
+  }, [isEditing, existingInvoice]);
 
   useEffect(() => {
     if (invoiceType === 'project' && selectedProject && !isEditing) {
@@ -164,7 +185,7 @@ export default function InvoiceForm() {
         vatApplicable: false,
         vatPercentage: 0,
         vatAmount: 0,
-        itemDate: new Date().toISOString().split('T')[0], // ✅ ADD item date
+        itemDate: new Date().toISOString().split('T')[0],
       })));
     } else {
       setItems([{ 
@@ -355,6 +376,7 @@ export default function InvoiceForm() {
         billingPercentage: invoiceType === 'project' ? projectInvoicePercentage : undefined,
         billingValue: invoiceType === 'project' ? projectBillingValue : undefined,
         projectSummary: invoiceType === 'project' ? projectSummary : undefined,
+        showDateColumn: showDateColumn, // ✅ SAVE the toggle state
         updatedAt: now,
       };
 
@@ -391,6 +413,7 @@ export default function InvoiceForm() {
         notes,
         terms,
         salesmanId,
+        showDateColumn: showDateColumn, // ✅ SAVE the toggle state
         createdAt: now,
         updatedAt: now,
       };
@@ -485,7 +508,6 @@ export default function InvoiceForm() {
     <div className="space-y-3 pb-24 lg:pb-4">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          {/* ✅ FIX 1: Back button goes to invoices list */}
           <Button 
             variant="ghost" 
             size="icon" 
@@ -532,7 +554,7 @@ export default function InvoiceForm() {
         )}
       </div>
 
-      {/* ✅ FIX 2: Toggle always visible for both new and edit */}
+      {/* ✅ DATE COLUMN TOGGLE - Always visible */}
       <Card>
         <CardContent className="px-3 py-3">
           <div className="flex items-center justify-between rounded-md border p-3">
@@ -551,7 +573,7 @@ export default function InvoiceForm() {
           </div>
         </CardContent>
       </Card>
-      
+
       {/* Client & Due Date */}
       <Card>
         <CardHeader className="py-2.5 px-3"><CardTitle className="text-sm">Client & Details</CardTitle></CardHeader>
@@ -765,7 +787,7 @@ export default function InvoiceForm() {
         </Card>
       )}
 
-      {/* ✅ FIX 3: Items with individual dates */}
+      {/* Items */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between py-2.5 px-3">
           <CardTitle className="text-sm">Items</CardTitle>
@@ -805,7 +827,6 @@ export default function InvoiceForm() {
                 {items.map((item, index) => (
                   <tr key={item.id} className="border-b last:border-0">
                     {showDateColumn ? (
-                      // ✅ Date Column ON: Show individual item date
                       <>
                         <td className="py-2">
                           <Input 
@@ -874,7 +895,6 @@ export default function InvoiceForm() {
                         </td>
                       </>
                     ) : (
-                      // ✅ Date Column OFF: Show S.No
                       <>
                         <td className="py-2 text-muted-foreground">{index + 1}</td>
                         <td className="py-2 min-w-[180px]">
@@ -952,12 +972,10 @@ export default function InvoiceForm() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       {showDateColumn ? (
-                        // Date Column ON: Show individual item date
                         <span className="text-xs text-muted-foreground">
                           {item.itemDate ? new Date(item.itemDate).toLocaleDateString('en-GB') : '-'}
                         </span>
                       ) : (
-                        // Date Column OFF: Show S.No
                         <span className="text-xs text-muted-foreground">{index + 1}.</span>
                       )}
                       <p className="text-sm font-medium truncate">{item.name || 'Untitled item'}</p>
@@ -1116,7 +1134,6 @@ export default function InvoiceForm() {
                 />
               </div>
             </div>
-            {/* ✅ Add date picker for mobile */}
             <div className="space-y-1.5">
               <Label className="text-xs">Item Date</Label>
               <Input 
