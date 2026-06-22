@@ -8,7 +8,7 @@ interface DocumentData {
   document: Quotation | Invoice;
   client?: Client;
   settings: BusinessSettings;
-  showDateColumn?: boolean;  // ← ADDED
+  showDateColumn?: boolean;
 }
 
 // Convert number to words for amount display
@@ -22,7 +22,7 @@ function numberToWords(num: number, currency: string): string {
   const currencyUnit = isOmani ? 'Omani Rial' : 'Rupee';
   const currencyUnitPlural = isOmani ? 'Omani Rials' : 'Rupees';
   const subUnit = isOmani ? 'Fils' : 'Paise';
-  const subUnitDivisor = isOmani ? 1000 : 100; // OMR uses 3 decimals (fils)
+  const subUnitDivisor = isOmani ? 1000 : 100;
 
   function convertBelowThousand(n: number): string {
     if (n === 0) return '';
@@ -70,13 +70,13 @@ function numberToWords(num: number, currency: string): string {
 }
 
 // ✅ UPDATED - Added showDateColumn parameter
-export async function generatePDF({ type, document: docData, client, settings, showDateColumn = true }: DocumentData) {
+export async function generatePDF({ type, document: docData, client, settings, showDateColumn = false }: DocumentData) {
   const pdfBlob = await generatePDFBlob({ 
     type, 
     document: docData, 
     client, 
     settings,
-    showDateColumn  // ← PASS THROUGH
+    showDateColumn
   });
 
   const filename = `${type}-${docData.number}.pdf`;
@@ -94,7 +94,7 @@ export async function generatePDF({ type, document: docData, client, settings, s
 }
 
 // ✅ UPDATED - Added showDateColumn parameter
-export async function shareViaWhatsApp({ type, document: docData, client, settings, showDateColumn = true }: DocumentData) {
+export async function shareViaWhatsApp({ type, document: docData, client, settings, showDateColumn = false }: DocumentData) {
   const currencySymbol = currencySymbols[settings.currency];
   const isInvoice = type === 'invoice';
 
@@ -113,21 +113,20 @@ export async function shareViaWhatsApp({ type, document: docData, client, settin
 
   window.open(url, '_blank');
 
-  // Run PDF generation in the background so share stays user-gesture initiated
   void generatePDF({ 
     type, 
     document: docData, 
     client, 
     settings,
-    showDateColumn  // ← PASS THROUGH
+    showDateColumn
   }).catch((err) => {
     console.error('PDF error:', err);
   });
 }
 
-// ✅ UPDATED - Added showDateColumn parameter
-export async function generatePDFBlob({ type, document: docData, client, settings, showDateColumn = true }: DocumentData) {
-  // Re-fetch the latest record from the cloud so we never render stale/empty data.
+// ✅ UPDATED - Main PDF generation with individual item dates
+export async function generatePDFBlob({ type, document: docData, client, settings, showDateColumn = false }: DocumentData) {
+  // Re-fetch the latest record from the cloud
   try {
     const uid = await getUserId();
     if (uid && docData?.id) {
@@ -154,7 +153,7 @@ export async function generatePDFBlob({ type, document: docData, client, setting
   const invoice = isInvoice ? (docData as Invoice) : null;
   const docTypeLabel = isInvoice ? 'TAX INVOICE' : 'QUOTATION';
   const subtotal = docData.items.reduce((s, i) => s + (i.total || 0), 0);
-  const vatEnabledFlag = (docData as any).vatEnabled !== false; // default on
+  const vatEnabledFlag = (docData as any).vatEnabled !== false;
   const vatRate = vatEnabledFlag ? (settings.defaultVatPercentage ?? 5) : 0;
   const vatAmount = +(subtotal * vatRate / 100).toFixed(3);
   const grandTotal = +(subtotal + vatAmount).toFixed(3);
@@ -162,7 +161,7 @@ export async function generatePDFBlob({ type, document: docData, client, setting
   const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
   const money = (n: number) => `${currencySymbol} ${fmt(n)}`;
 
-  // ✅ Get invoice date for display
+  // ✅ Get invoice date for header
   const invoiceDate = isInvoice && invoice?.invoiceDate 
     ? new Date(invoice.invoiceDate) 
     : new Date((docData as any).invoiceDate || docData.createdAt);
@@ -172,6 +171,20 @@ export async function generatePDFBlob({ type, document: docData, client, setting
     month: '2-digit',
     year: 'numeric'
   });
+
+  // ✅ Helper function to format individual item date
+  const formatItemDate = (itemDate?: string) => {
+    if (!itemDate) return formattedDate; // Fallback to invoice date
+    try {
+      return new Date(itemDate).toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
+    } catch {
+      return formattedDate;
+    }
+  };
 
   const styleHtml = `
     <style>
@@ -226,7 +239,6 @@ export async function generatePDFBlob({ type, document: docData, client, setting
   const tableHeaders = `
     <tr>
       ${showDateColumn ? `
-        <!-- Date Column ON: Show DATE, hide S.No -->
         <th style="width: 100px;">Date</th>
         <th>Description</th>
         <th style="width: 60px;">Qty</th>
@@ -234,7 +246,6 @@ export async function generatePDFBlob({ type, document: docData, client, setting
         <th style="width: 110px;">Rate</th>
         <th style="width: 120px;">Amount</th>
       ` : `
-        <!-- Date Column OFF: Show S.No, hide Date -->
         <th style="width: 40px;">S.No</th>
         <th>Description</th>
         <th style="width: 60px;">Qty</th>
@@ -245,12 +256,17 @@ export async function generatePDFBlob({ type, document: docData, client, setting
     </tr>
   `;
 
-  // ✅ TABLE ROWS - Conditional based on showDateColumn
-  const tableRows = docData.items.map((item, index) => `
+  // ✅ TABLE ROWS - Using INDIVIDUAL item dates
+  const tableRows = docData.items.map((item, index) => {
+    // ✅ Get individual item date or fallback to invoice date
+    const itemDate = item.itemDate || (docData as any).invoiceDate || docData.createdAt;
+    const formattedItemDate = formatItemDate(itemDate);
+    
+    return `
     <tr>
       ${showDateColumn ? `
-        <!-- Date Column ON: Show Date, hide S.No -->
-        <td style="font-size: 13px; color: #6b7280;">${formattedDate}</td>
+        <!-- Date Column ON: Show INDIVIDUAL item date -->
+        <td style="font-size: 13px; color: #6b7280; white-space: nowrap;">${formattedItemDate}</td>
         <td>
           <div class="item-name">${item.name}</div>
           ${item.description ? `<div class="item-desc">${item.description}</div>` : ''}
@@ -260,7 +276,7 @@ export async function generatePDFBlob({ type, document: docData, client, setting
         <td>${money(item.rate || 0)}</td>
         <td>${money(item.total || 0)}</td>
       ` : `
-        <!-- Date Column OFF: Show S.No, hide Date -->
+        <!-- Date Column OFF: Show S.No -->
         <td>${index + 1}</td>
         <td>
           <div class="item-name">${item.name}</div>
@@ -272,7 +288,7 @@ export async function generatePDFBlob({ type, document: docData, client, setting
         <td>${money(item.total || 0)}</td>
       `}
     </tr>
-  `).join('');
+  `}).join('');
 
   const bodyHtml = `
     <div class="pdf-root">
@@ -285,7 +301,7 @@ export async function generatePDFBlob({ type, document: docData, client, setting
               ${settings.email || ''}
               ${settings.phone ? ` • ${settings.phone}<br>` : ''}
               ${settings.address ? `${settings.address}<br>` : ''}
-              ${settings.taxNumber ? `VAT: ${settings.taxNumber}` : ''}
+              ${settings.taxNumber ? `GST: ${settings.taxNumber}` : ''}
             </div>
           </div>
         </div>
@@ -370,7 +386,7 @@ export async function generatePDFBlob({ type, document: docData, client, setting
     </div>
   `;
 
-  console.log('[PDF] generating', type, docData.number, 'items:', docData.items?.length ?? 0, 'netTotal:', docData.netTotal, 'showDateColumn:', showDateColumn);
+  console.log('[PDF] generating', type, docData.number, 'items:', docData.items?.length ?? 0, 'showDateColumn:', showDateColumn);
 
   const container = window.document.createElement('div');
   container.style.position = 'fixed';
@@ -430,7 +446,6 @@ export async function generatePDFBlob({ type, document: docData, client, setting
     if (imgHeight <= pageHeight - margin * 2) {
       pdf.addImage(imgData, 'JPEG', margin, margin, usableWidth, imgHeight);
     } else {
-      // Multi-page: slice the canvas vertically
       const pageContentHeightPx = ((pageHeight - margin * 2) * canvas.width) / usableWidth;
       let renderedPx = 0;
       let pageIndex = 0;
@@ -460,13 +475,13 @@ export async function generatePDFBlob({ type, document: docData, client, setting
 }
 
 // ✅ UPDATED - Added showDateColumn parameter
-export async function printDocument({ type, document: docData, client, settings, showDateColumn = true }: DocumentData) {
+export async function printDocument({ type, document: docData, client, settings, showDateColumn = false }: DocumentData) {
   const pdfBlob = await generatePDFBlob({ 
     type, 
     document: docData, 
     client, 
     settings,
-    showDateColumn  // ← PASS THROUGH
+    showDateColumn
   });
   const objectUrl = window.URL.createObjectURL(pdfBlob);
   const iframe = window.document.createElement('iframe');
@@ -485,7 +500,6 @@ export async function printDocument({ type, document: docData, client, settings,
     } catch (e) {
       console.error('[print] failed:', e);
     }
-    // Cleanup later — give the print dialog time to open.
     setTimeout(() => {
       window.URL.revokeObjectURL(objectUrl);
       iframe.remove();
