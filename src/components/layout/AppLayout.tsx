@@ -49,6 +49,7 @@ const reportSubmenuItems = [
 ];
 
 export function AppLayout({ children }: AppLayoutProps) {
+  // ✅ ALL HOOKS MUST BE CALLED FIRST
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(location.pathname.startsWith('/reports'));
@@ -57,8 +58,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const { user, role, signOut } = useAuth();
   const isAuthRoute = location.pathname === '/auth';
 
-  if (isAuthRoute) return <>{children}</>;
-
+  // ✅ ALL useEffect hooks before any conditional return
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -71,6 +71,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     setSidebarOpen(false);
   }, [location.pathname]);
 
+  // ✅ ALL useCallback hooks before any conditional return
   const toggleTheme = useCallback(() => {
     setTheme(theme === 'dark' ? 'light' : 'dark');
   }, [setTheme, theme]);
@@ -80,6 +81,12 @@ export function AppLayout({ children }: AppLayoutProps) {
     return location.pathname === href || (href !== '/' && location.pathname.startsWith(href));
   };
 
+  // ✅ NOW it's safe to have an early return
+  if (isAuthRoute) {
+    return <>{children}</>;
+  }
+
+  // ✅ Rest of the component remains the same
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="lg:flex lg:min-h-screen">
