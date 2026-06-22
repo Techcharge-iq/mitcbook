@@ -3,6 +3,7 @@
  * - Pulls existing rows for the signed-in user on mount
  * - Upserts/deletes per-row on local mutations
  * - Subscribes to realtime changes so other devices see updates within ~1s
+ * - ✅ UPDATED: Now supports company isolation via company_id filter
  *
  * Local-only / unauthenticated users keep working from localStorage as before.
  */
@@ -222,32 +223,64 @@ export const syncBus = {
   subscribe(cb: SyncListener) { listeners.add(cb); return () => { listeners.delete(cb); }; },
 };
 
-export async function cloudLoadAll<T>(collection: string): Promise<T[] | null> {
+// ✅ UPDATED: Added companyId parameter
+export async function cloudLoadAll<T>(
+  collection: string,
+  userId?: string,
+  companyId?: string
+): Promise<T[] | null> {
   const meta = COLLECTIONS[collection];
   if (!meta) return null;
-  const uid = await getUserId();
+  
+  const uid = userId || await getUserId();
   if (!uid) return null;
-  const { data, error } = await supabase.from(meta.table as any).select('*').eq('user_id', uid);
+  
+  let query = supabase
+    .from(meta.table as any)
+    .select('*')
+    .eq('user_id', uid);
+  
+  // ✅ ADD company filter if provided
+  if (companyId) {
+    query = query.eq('company_id', companyId);
+  }
+  
+  const { data, error } = await query;
+  
   if (error) {
     console.error(`[cloud] load ${collection} failed:`, error);
     return null;
   }
+  
   const rows = (data ?? []).map((r) => fromRow(collection, r)) as T[];
-  console.info(`[cloud] load ${collection} →`, rows.length);
+  console.info(`[cloud] load ${collection} →`, rows.length, companyId ? `(company: ${companyId})` : '');
   return rows;
 }
 
-export async function cloudFetchById<T = any>(collection: string, id: string): Promise<T | null> {
+export async function cloudFetchById<T = any>(
+  collection: string,
+  id: string,
+  companyId?: string
+): Promise<T | null> {
   const meta = COLLECTIONS[collection];
   if (!meta || !id) return null;
+  
   const uid = await getUserId();
   if (!uid) return null;
-  const { data, error } = await supabase
+  
+  let query = supabase
     .from(meta.table as any)
     .select('*')
     .eq('id', id)
-    .eq('user_id', uid)
-    .maybeSingle();
+    .eq('user_id', uid);
+  
+  // ✅ ADD company filter if provided
+  if (companyId) {
+    query = query.eq('company_id', companyId);
+  }
+  
+  const { data, error } = await query.maybeSingle();
+  
   if (error) {
     console.warn(`[cloud] fetchById ${collection}/${id} failed:`, error.message);
     return null;
@@ -255,16 +288,34 @@ export async function cloudFetchById<T = any>(collection: string, id: string): P
   return data ? (fromRow(collection, data) as T) : null;
 }
 
-export async function cloudUpsert(collection: string, item: any): Promise<void> {
+// ✅ UPDATED: Added companyId to upsert
+export async function cloudUpsert(
+  collection: string,
+  item: any,
+  companyId?: string
+): Promise<void> {
   const meta = COLLECTIONS[collection];
   if (!meta) return;
+  
   const uid = await getUserId();
   if (!uid) return;
+  
   const row = toRow(collection, item);
   if (!row) return;
+  
+  // ✅ ADD company_id to the row
   row.user_id = uid;
+  if (companyId) {
+    row.company_id = companyId;
+  } else if (item.company_id) {
+    row.company_id = item.company_id;
+  }
+  
   syncBus.emit('saving');
-  const { error } = await supabase.from(meta.table as any).upsert(row, { onConflict: 'id' });
+  const { error } = await supabase
+    .from(meta.table as any)
+    .upsert(row, { onConflict: 'id' });
+  
   if (error) {
     console.error(`[cloud] upsert ${collection}/${item.id} failed:`, error);
     syncBus.emit('error');
@@ -274,43 +325,94 @@ export async function cloudUpsert(collection: string, item: any): Promise<void> 
   }
 }
 
-export async function cloudDelete(collection: string, id: string): Promise<void> {
+// ✅ UPDATED: Added companyId to delete
+export async function cloudDelete(
+  collection: string,
+  id: string,
+  companyId?: string
+): Promise<void> {
   const meta = COLLECTIONS[collection];
   if (!meta) return;
+  
   const uid = await getUserId();
   if (!uid) return;
+  
   syncBus.emit('saving');
-  const { error } = await supabase.from(meta.table as any).delete().eq('id', id).eq('user_id', uid);
+  
+  let query = supabase
+    .from(meta.table as any)
+    .delete()
+    .eq('id', id)
+    .eq('user_id', uid);
+  
+  // ✅ ADD company filter if provided
+  if (companyId) {
+    query = query.eq('company_id', companyId);
+  }
+  
+  const { error } = await query;
+  
   if (error) {
     console.error(`[cloud] delete ${collection}/${id} failed:`, error);
     syncBus.emit('error');
   } else {
+    console.info(`[cloud] delete ${collection}/${id} ok`);
     syncBus.emit('saved');
   }
 }
 
+// ✅ UPDATED: Added companyId to subscription
 export function cloudSubscribe(
   collection: string,
   userId: string,
-  onChange: (event: 'INSERT' | 'UPDATE' | 'DELETE', row: any, oldRow: any) => void,
+  companyId?: string,
+  onChange?: (event: 'INSERT' | 'UPDATE' | 'DELETE', row: any, oldRow: any) => void,
 ) {
   const meta = COLLECTIONS[collection];
   if (!meta) return () => {};
+  
+  // ✅ Build filter with company_id if provided
+  let filter = `user_id=eq.${userId}`;
+  if (companyId) {
+    filter = `${filter},company_id=eq.${companyId}`;
+  }
+  
+  const channelName = `sync-${collection}-${userId}${companyId ? `-${companyId}` : ''}`;
+  
   const channel = supabase
-    .channel(`sync-${collection}-${userId}`)
+    .channel(channelName)
     .on(
       'postgres_changes' as any,
-      { event: '*', schema: 'public', table: meta.table, filter: `user_id=eq.${userId}` },
+      { 
+        event: '*', 
+        schema: 'public', 
+        table: meta.table, 
+        filter: filter 
+      },
       (payload: any) => {
         const newRow = payload.new ? fromRow(collection, payload.new) : null;
         const oldRow = payload.old ? fromRow(collection, payload.old) : null;
-        onChange(payload.eventType, newRow, oldRow);
+        if (onChange) {
+          onChange(payload.eventType, newRow, oldRow);
+        }
       },
     )
     .subscribe();
+  
   return () => {
     supabase.removeChannel(channel);
   };
+}
+
+// ✅ NEW: Helper to ensure company_id exists on all rows
+export function ensureCompanyId<T extends { id: string }>(
+  item: T,
+  companyId: string
+): T & { company_id: string } {
+  return {
+    ...item,
+    company_id: companyId || 'default',
+  } as T & { company_id: string };
 }
 
 // silence unused-key lint

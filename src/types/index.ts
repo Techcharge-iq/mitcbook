@@ -1,9 +1,12 @@
+// /workspaces/mitcbook/src/types/index.ts
+
 // Party types
 export type PartyType = 'customer' | 'vendor' | 'both';
 
 // Client types
 export interface Client {
   id: string;
+  company_id?: string; // ✅ ADDED - Company isolation
   name: string;
   email: string;
   phone: string;
@@ -31,7 +34,7 @@ export interface LineItem {
   vatApplicable?: boolean;
   vatPercentage?: number;
   vatAmount?: number;
-  itemDate?: string;
+  itemDate?: string; // ✅ Individual item date
 }
 
 // Item master
@@ -39,6 +42,7 @@ export type ItemKind = 'goods' | 'services';
 
 export interface Item {
   id: string;
+  company_id?: string; // ✅ ADDED - Company isolation
   kind?: ItemKind; // defaults to 'goods' for legacy items
   code?: string;
   category?: string;
@@ -61,6 +65,7 @@ export type QuotationStatus = 'draft' | 'sent' | 'approved' | 'rejected' | 'conv
 
 export interface Quotation {
   id: string;
+  company_id?: string; // ✅ ADDED - Company isolation
   number: string;
   clientId: string;
   salesmanId?: string;
@@ -101,6 +106,7 @@ export interface ProjectInvoiceSummary {
 
 export interface Project {
   id: string;
+  company_id?: string; // ✅ ADDED - Company isolation
   name: string;
   customerId: string;
   vendorId: string;
@@ -116,6 +122,7 @@ export interface Project {
 
 export interface Invoice {
   id: string;
+  company_id?: string; // ✅ ADDED - Company isolation
   number: string;
   manualInvoiceNumber?: string;
   invoiceNumberMode?: 'auto' | 'manual';
@@ -137,7 +144,13 @@ export interface Invoice {
   notes: string;
   terms: string;
   createdAt: string;
-  showDateColumn?: boolean;
+  showDateColumn?: boolean; // ✅ Toggle state
+  retentionPercentage?: number; // ✅ Retention field
+  retentionAmount?: number; // ✅ Retention field
+  retentionReleased?: number; // ✅ Retention field
+  retentionStatus?: 'held' | 'partial' | 'released';
+  retentionReleaseDate?: string;
+  retentionReleaseNotes?: string;
   updatedAt: string;
 }
 
@@ -146,6 +159,7 @@ export type PurchaseInvoiceStatus = 'draft' | 'sent' | 'partial' | 'paid' | 'ove
 
 export interface PurchaseInvoice {
   id: string;
+  company_id?: string; // ✅ ADDED - Company isolation
   number: string;
   manualInvoiceNumber?: string;
   invoiceNumberMode?: 'auto' | 'manual';
@@ -167,6 +181,7 @@ export type PaymentMethod = 'cash' | 'bank' | 'card' | 'cheque' | 'online';
 
 export interface Payment {
   id: string;
+  company_id?: string; // ✅ ADDED - Company isolation
   invoiceId: string;
   invoiceType: 'sales' | 'purchase';
   amount: number;
@@ -188,6 +203,7 @@ export type AccountNodeKind = 'group' | 'ledger';
 
 export interface Account {
   id: string;
+  company_id?: string; // ✅ ADDED - Company isolation
   code: string;
   name: string;
   type: AccountType;
@@ -201,6 +217,7 @@ export type VoucherType = 'contra' | 'expense' | 'loan_given' | 'loan_received' 
 
 export interface Voucher {
   id: string;
+  company_id?: string; // ✅ ADDED - Company isolation
   number: string;
   type: VoucherType;
   date: string;
@@ -215,6 +232,7 @@ export interface Voucher {
 
 export interface JournalEntry {
   id: string;
+  company_id?: string; // ✅ ADDED - Company isolation
   date: string;
   reference: string;
   referenceType: 'sales_invoice' | 'purchase_invoice' | 'receipt' | 'payment' | 'contra' | 'expense' | 'loan_given' | 'loan_received' | 'journal';
@@ -235,11 +253,25 @@ export interface JournalLine {
 
 export interface AuditEntry {
   id: string;
+  company_id?: string; // ✅ ADDED - Company isolation
   type: 'client' | 'quotation' | 'invoice' | 'project' | 'purchase_invoice' | 'payment' | 'voucher' | 'account' | 'settings';
   action: 'created' | 'updated' | 'deleted' | 'processed' | 'saved' | 'approved' | 'paid';
   target: string;
   value?: number;
   details?: string;
+  userId?: string;
+  createdAt: string;
+}
+
+// ✅ NEW: Retention Release type
+export interface RetentionRelease {
+  id: string;
+  company_id?: string; // ✅ ADDED - Company isolation
+  invoiceId: string;
+  amount: number;
+  date: string;
+  reference?: string;
+  notes?: string;
   createdAt: string;
 }
 
@@ -279,6 +311,7 @@ export interface Company {
 // Salesman
 export interface Salesman {
   id: string;
+  company_id?: string; // ✅ ADDED - Company isolation
   name: string;
   phone?: string;
   createdAt: string;

@@ -15,11 +15,14 @@ import { supabase } from '@/integrations/supabase/client';
  * Drop-in replacement for useLocalStorage<T[]> that also syncs the array
  * with Supabase when the user is signed in. localStorage remains the
  * offline cache so the app works without a connection.
+ * 
+ * ✅ UPDATED: Now supports company isolation via companyId parameter
  */
 export function useRemoteCollection<T extends { id: string }>(
   collection: string,
   storageKey: string,
-  initial: T[] = []
+  initial: T[] = [],
+  companyId?: string // ✅ NEW: Optional company ID for isolation
 ): [T[], (next: T[] | ((prev: T[]) => T[])) => void] {
   const [value, setValue] = useLocalStorage<T[]>(storageKey, initial);
   const previousRef = useRef<T[]>(value);
@@ -45,38 +48,58 @@ export function useRemoteCollection<T extends { id: string }>(
   useEffect(() => {
     if (!syncable || !userId) return;
     let cancelled = false;
-    cloudLoadAll<T>(collection).then((rows) => {
+    
+    cloudLoadAll<T>(collection, userId, companyId).then((rows) => {
       if (cancelled || !rows) return;
       setValue((prev) => {
         const cloudMap = new Map(rows.map((r) => [r.id, r]));
         const merged: T[] = [...rows];
-        for (const local of prev) {
-          if (!cloudMap.has(local.id)) merged.push(local);
-        }
-        previousRef.current = merged;
-        // Push any local-only rows up to the cloud.
+        
+        // Merge local data that might not be in cloud yet
         for (const local of prev) {
           if (!cloudMap.has(local.id)) {
-            void cloudUpsert(collection, local);
+            // ✅ Ensure local data has company_id before pushing
+            const localWithCompany = {
+              ...local,
+              company_id: companyId || 'default',
+            } as T;
+            merged.push(localWithCompany);
+          }
+        }
+        previousRef.current = merged;
+        
+        // Push any local-only rows up to the cloud with company_id
+        for (const local of prev) {
+          if (!cloudMap.has(local.id)) {
+            const localWithCompany = {
+              ...local,
+              company_id: companyId || 'default',
+            } as T;
+            void cloudUpsert(collection, localWithCompany);
           }
         }
         return merged;
       });
     });
     return () => { cancelled = true; };
-  }, [collection, syncable, userId]);
+  }, [collection, syncable, userId, companyId]);
 
   // -------- Supabase: realtime subscription --------
   useEffect(() => {
     if (!syncable || !userId) return;
-    const unsub = cloudSubscribe(collection, userId, (event, row, oldRow) => {
+    const unsub = cloudSubscribe(collection, userId, companyId, (event, row, oldRow) => {
       syncBus.emit('remote-update');
       setValue((prev) => {
         const map = new Map(prev.map((r) => [r.id, r]));
         if (event === 'DELETE') {
           if (oldRow?.id) map.delete(oldRow.id);
         } else if (row?.id) {
-          map.set(row.id, row as T);
+          // ✅ Ensure row has company_id
+          const rowWithCompany = {
+            ...row,
+            company_id: companyId || 'default',
+          } as T;
+          map.set(row.id, rowWithCompany);
         }
         const next = Array.from(map.values()) as T[];
         previousRef.current = next;
@@ -84,7 +107,7 @@ export function useRemoteCollection<T extends { id: string }>(
       });
     });
     return unsub;
-  }, [collection, syncable, userId]);
+  }, [collection, syncable, userId, companyId]);
 
   // -------- Push local mutations --------
   const setAndPush = useCallback(
@@ -98,7 +121,12 @@ export function useRemoteCollection<T extends { id: string }>(
           const old = before.get(id);
           if (!old || JSON.stringify(old) !== JSON.stringify(row)) {
             if (syncable && userId) {
-              void cloudUpsert(collection, row);
+              // ✅ Ensure row has company_id before pushing
+              const rowWithCompany = {
+                ...row,
+                company_id: companyId || 'default',
+              } as T;
+              void cloudUpsert(collection, rowWithCompany);
             }
           }
         }
@@ -113,7 +141,7 @@ export function useRemoteCollection<T extends { id: string }>(
         return computed;
       });
     },
-    [collection, setValue, syncable, userId]
+    [collection, setValue, syncable, userId, companyId]
   );
 
   return [value, setAndPush];

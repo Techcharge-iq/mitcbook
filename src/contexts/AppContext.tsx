@@ -167,14 +167,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     
     (async () => {
       try {
-        // Check if we're in a browser environment with Supabase
         const { supabase } = await import('@/integrations/supabase/client');
         const { data: sess } = await supabase.auth.getSession();
         const uid = sess.session?.user?.id;
         
         if (!uid || cancelled) return;
         
-        // Fetch unique companies from business_settings
         const { data, error } = await supabase
           .from('business_settings')
           .select('company_id, name')
@@ -183,7 +181,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         
         if (!error && data && data.length > 0) {
-          // Create unique list of companies
           const uniqueCompanies = Array.from(
             new Map(data.map(item => [
               item.company_id || 'default', 
@@ -194,7 +191,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             ]))
           ).map(([_, value]) => value);
           
-          // Merge with existing companies
           setCompanies(prev => {
             const existingMap = new Map(prev.map(c => [c.id, c]));
             uniqueCompanies.forEach(company => {
@@ -205,7 +201,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             return Array.from(existingMap.values());
           });
           
-          // If selected company doesn't exist, select the first one
           const currentCompanyExists = uniqueCompanies.some(c => c.id === selectedCompanyId);
           if (!currentCompanyExists && uniqueCompanies.length > 0) {
             setSelectedCompanyId(uniqueCompanies[0].id);
@@ -219,22 +214,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })();
     
     return () => { cancelled = true; };
-  }, []); // Run once on mount
+  }, []);
 
-  // Shared collections sync with the LAN server when one is configured;
-  // otherwise they fall back to localStorage.
-  const [clients, setClients] = useRemoteCollection<Client>('clients', companyKey('clients'), []);
-  const [quotations, setQuotations] = useRemoteCollection<Quotation>('quotations', companyKey('quotations'), []);
-  const [invoices, setInvoices] = useRemoteCollection<Invoice>('invoices', companyKey('invoices'), []);
-  const [projects, setProjects] = useRemoteCollection<Project>('projects', companyKey('projects'), []);
-  const [purchaseInvoices, setPurchaseInvoices] = useRemoteCollection<PurchaseInvoice>('purchaseInvoices', companyKey('purchase_invoices'), []);
-  const [payments, setPayments] = useRemoteCollection<Payment>('payments', companyKey('payments'), []);
-  const [accounts, setAccounts] = useRemoteCollection<Account>('accounts', companyKey('accounts'), DEFAULT_ACCOUNTS);
-  const [journalEntries, setJournalEntries] = useRemoteCollection<JournalEntry>('journalEntries', companyKey('journal_entries'), []);
+  // ✅ UPDATED: Pass companyId to all useRemoteCollection calls
+  const [clients, setClients] = useRemoteCollection<Client>('clients', companyKey('clients'), [], selectedCompanyId);
+  const [quotations, setQuotations] = useRemoteCollection<Quotation>('quotations', companyKey('quotations'), [], selectedCompanyId);
+  const [invoices, setInvoices] = useRemoteCollection<Invoice>('invoices', companyKey('invoices'), [], selectedCompanyId);
+  const [projects, setProjects] = useRemoteCollection<Project>('projects', companyKey('projects'), [], selectedCompanyId);
+  const [purchaseInvoices, setPurchaseInvoices] = useRemoteCollection<PurchaseInvoice>('purchaseInvoices', companyKey('purchase_invoices'), [], selectedCompanyId);
+  const [payments, setPayments] = useRemoteCollection<Payment>('payments', companyKey('payments'), [], selectedCompanyId);
+  const [accounts, setAccounts] = useRemoteCollection<Account>('accounts', companyKey('accounts'), DEFAULT_ACCOUNTS, selectedCompanyId);
+  const [journalEntries, setJournalEntries] = useRemoteCollection<JournalEntry>('journalEntries', companyKey('journal_entries'), [], selectedCompanyId);
   const [accountBalances, setAccountBalances] = useLocalStorage<AccountBalanceStore>(companyKey('account_balances'), {});
-  const [vouchers, setVouchers] = useRemoteCollection<Voucher>('vouchers', companyKey('vouchers'), []);
-  const [items, setItems] = useRemoteCollection<Item>('items', companyKey('items'), []);
-  const [salesmen, setSalesmen] = useRemoteCollection<Salesman>('salesmen', companyKey('salesmen'), []);
+  const [vouchers, setVouchers] = useRemoteCollection<Voucher>('vouchers', companyKey('vouchers'), [], selectedCompanyId);
+  const [items, setItems] = useRemoteCollection<Item>('items', companyKey('items'), [], selectedCompanyId);
+  const [salesmen, setSalesmen] = useRemoteCollection<Salesman>('salesmen', companyKey('salesmen'), [], selectedCompanyId);
   const [settings, setSettings] = useLocalStorage<BusinessSettings>(companyKey('settings'), defaultSettings);
   const [auditLog, setAuditLog] = useLocalStorage<AuditEntry[]>(companyKey('audit_log'), []);
 
@@ -248,7 +242,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [invoices]);
 
-  // Cloud sync for business_settings (per signed-in user, per company)
+  // ✅ UPDATED: Cloud sync with company_id
   useEffect(() => {
     let cancelled = false;
     let hydrated = false;
@@ -257,12 +251,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { data: sess } = await supabase.auth.getSession();
       const uid = sess.session?.user?.id;
       if (!uid) return;
+      
       const { data, error } = await supabase
         .from('business_settings')
         .select('*')
         .eq('user_id', uid)
-        .eq('company_id', selectedCompanyId)
+        .eq('company_id', selectedCompanyId)  // ✅ ADDED company filter
         .maybeSingle();
+        
       if (cancelled) return;
       if (!error && data) {
         setSettings({
@@ -287,7 +283,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, [selectedCompanyId]);
 
-  // Push settings changes to cloud
+  // ✅ UPDATED: Push settings with company_id
   const settingsPushRef = React.useRef<string>('');
   useEffect(() => {
     const snapshot = JSON.stringify(settings);
@@ -298,9 +294,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { data: sess } = await supabase.auth.getSession();
       const uid = sess.session?.user?.id;
       if (!uid) return;
+      
       const payload = {
         user_id: uid,
-        company_id: selectedCompanyId,
+        company_id: selectedCompanyId,  // ✅ ADDED company_id
         name: settings.name,
         email: settings.email,
         phone: settings.phone,
@@ -315,12 +312,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         bank_account_number: settings.bankAccountNumber,
         signature: settings.signature,
       };
+      
       const { data: existing } = await supabase
         .from('business_settings')
         .select('id')
         .eq('user_id', uid)
-        .eq('company_id', selectedCompanyId)
+        .eq('company_id', selectedCompanyId)  // ✅ ADDED company filter
         .maybeSingle();
+        
       if (existing?.id) {
         await supabase.from('business_settings').update(payload).eq('id', existing.id);
       } else {
@@ -371,19 +370,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const getRecentAuditLog = (limit = 10) => auditLog.slice(0, limit);
 
-  // Client operations
+  // ✅ UPDATED: Client operations with company_id
   const addClient = (client: Client) => {
-    setClients((prev) => [...prev, client]);
+    const clientWithCompany = {
+      ...client,
+      company_id: selectedCompanyId,  // ✅ ADDED company_id
+    };
+    setClients((prev) => [...prev, clientWithCompany]);
     addAuditEntry({
       type: 'client',
       action: 'created',
       target: client.name,
-      details: `Created ${client.type}`,
+      details: `Created ${client.type} for company ${selectedCompanyId}`,
     });
   };
 
   const updateClient = (client: Client) => {
-    setClients((prev) => prev.map((c) => (c.id === client.id ? client : c)));
+    const clientWithCompany = {
+      ...client,
+      company_id: selectedCompanyId,  // ✅ ADDED company_id
+    };
+    setClients((prev) => prev.map((c) => (c.id === client.id ? clientWithCompany : c)));
     addAuditEntry({
       type: 'client',
       action: 'updated',
@@ -417,20 +424,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const getCustomers = () => clients.filter((c) => c.type === 'customer' || c.type === 'both');
   const getVendors = () => clients.filter((c) => c.type === 'vendor' || c.type === 'both');
 
-  // Quotation operations
+  // ✅ UPDATED: Quotation operations with company_id
   const addQuotation = (quotation: Quotation) => {
-    setQuotations((prev) => [...prev, quotation]);
+    const quotationWithCompany = {
+      ...quotation,
+      company_id: selectedCompanyId,  // ✅ ADDED company_id
+    };
+    setQuotations((prev) => [...prev, quotationWithCompany]);
     addAuditEntry({
       type: 'quotation',
       action: 'created',
       target: quotation.number,
-      details: `Quotation saved for client ${quotation.clientId}`,
+      details: `Quotation saved for client ${quotation.clientId} for company ${selectedCompanyId}`,
       value: quotation.netTotal,
     });
   };
 
   const updateQuotation = (quotation: Quotation) => {
-    setQuotations((prev) => prev.map((q) => (q.id === quotation.id ? quotation : q)));
+    const quotationWithCompany = {
+      ...quotation,
+      company_id: selectedCompanyId,  // ✅ ADDED company_id
+    };
+    setQuotations((prev) => prev.map((q) => (q.id === quotation.id ? quotationWithCompany : q)));
     addAuditEntry({
       type: 'quotation',
       action: 'updated',
@@ -454,20 +469,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
   const getQuotation = (id: string) => quotations.find((q) => q.id === id);
 
-  // Invoice operations
+  // ✅ UPDATED: Invoice operations with company_id
   const addInvoice = (invoice: Invoice) => {
-    setInvoices((prev) => [...prev, invoice]);
+    const invoiceWithCompany = {
+      ...invoice,
+      company_id: selectedCompanyId,  // ✅ ADDED company_id
+    };
+    setInvoices((prev) => [...prev, invoiceWithCompany]);
     addAuditEntry({
       type: 'invoice',
       action: 'created',
       target: invoice.number,
-      details: `Sales invoice created for client ${invoice.clientId}`,
+      details: `Sales invoice created for client ${invoice.clientId} for company ${selectedCompanyId}`,
       value: invoice.netTotal,
     });
   };
 
   const updateInvoice = (invoice: Invoice) => {
-    setInvoices((prev) => prev.map((i) => (i.id === invoice.id ? invoice : i)));
+    const invoiceWithCompany = {
+      ...invoice,
+      company_id: selectedCompanyId,  // ✅ ADDED company_id
+    };
+    setInvoices((prev) => prev.map((i) => (i.id === invoice.id ? invoiceWithCompany : i)));
     addAuditEntry({
       type: 'invoice',
       action: 'updated',
@@ -491,20 +514,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
   const getInvoice = (id: string) => invoices.find((i) => i.id === id);
 
-  // Project operations
+  // ✅ UPDATED: Project operations with company_id
   const addProject = (project: Project) => {
-    setProjects((prev) => [...prev, project]);
+    const projectWithCompany = {
+      ...project,
+      company_id: selectedCompanyId,  // ✅ ADDED company_id
+    };
+    setProjects((prev) => [...prev, projectWithCompany]);
     addAuditEntry({
       type: 'project',
       action: 'created',
       target: project.name,
-      details: `Project created for customer ${project.customerId}`,
+      details: `Project created for customer ${project.customerId} for company ${selectedCompanyId}`,
       value: project.totalValue,
     });
   };
 
   const updateProject = (project: Project) => {
-    setProjects((prev) => prev.map((p) => (p.id === project.id ? project : p)));
+    const projectWithCompany = {
+      ...project,
+      company_id: selectedCompanyId,  // ✅ ADDED company_id
+    };
+    setProjects((prev) => prev.map((p) => (p.id === project.id ? projectWithCompany : p)));
     addAuditEntry({
       type: 'project',
       action: 'updated',
@@ -528,20 +559,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
   const getProject = (id: string) => projects.find((p) => p.id === id);
 
-  // Purchase Invoice operations
+  // ✅ UPDATED: Purchase Invoice operations with company_id
   const addPurchaseInvoice = (pi: PurchaseInvoice) => {
-    setPurchaseInvoices((prev) => [...prev, pi]);
+    const piWithCompany = {
+      ...pi,
+      company_id: selectedCompanyId,  // ✅ ADDED company_id
+    };
+    setPurchaseInvoices((prev) => [...prev, piWithCompany]);
     addAuditEntry({
       type: 'purchase_invoice',
       action: 'created',
       target: pi.number,
-      details: `Purchase invoice created for vendor ${pi.vendorId}`,
+      details: `Purchase invoice created for vendor ${pi.vendorId} for company ${selectedCompanyId}`,
       value: pi.netTotal,
     });
   };
 
   const updatePurchaseInvoice = (pi: PurchaseInvoice) => {
-    setPurchaseInvoices((prev) => prev.map((p) => (p.id === pi.id ? pi : p)));
+    const piWithCompany = {
+      ...pi,
+      company_id: selectedCompanyId,  // ✅ ADDED company_id
+    };
+    setPurchaseInvoices((prev) => prev.map((p) => (p.id === pi.id ? piWithCompany : p)));
     addAuditEntry({
       type: 'purchase_invoice',
       action: 'updated',
@@ -565,17 +604,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
   const getPurchaseInvoice = (id: string) => purchaseInvoices.find((p) => p.id === id);
 
-  // Payment operations
+  // ✅ UPDATED: Payment operations with company_id
   const addPayment = (payment: Payment) => {
-    setPayments((prev) => [...prev, payment]);
+    const paymentWithCompany = {
+      ...payment,
+      company_id: selectedCompanyId,  // ✅ ADDED company_id
+    };
+    setPayments((prev) => [...prev, paymentWithCompany]);
     addAuditEntry({
       type: 'payment',
       action: 'processed',
       target: payment.reference || payment.invoiceId,
-      details: `Payment recorded via ${payment.method}`,
+      details: `Payment recorded via ${payment.method} for company ${selectedCompanyId}`,
       value: payment.amount,
     });
   };
+  
   const getPaymentsByInvoice = (invoiceId: string) => payments.filter((p) => p.invoiceId === invoiceId);
   const getPaymentsByClient = (clientId: string) => {
     const clientInvoiceIds = invoices.filter((i) => i.clientId === clientId).map((i) => i.id);
@@ -599,7 +643,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const remainingPaid = payments
         .filter((p) => p.invoiceId === inv.id && p.id !== payment.id)
         .reduce((s, p) => s + p.amount, 0) - removedAmount;
-      const totalPaid = Math.max(0, remainingPaid + payment.amount); // already adjusted by caller
+      const totalPaid = Math.max(0, remainingPaid + payment.amount);
       const status: InvoiceStatus =
         totalPaid <= 0 ? 'sent' : totalPaid < inv.netTotal ? 'partial' : 'paid';
       setInvoices((prev) => prev.map((i) => (i.id === inv.id ? { ...i, status, updatedAt: new Date().toISOString() } : i)));
@@ -619,17 +663,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const existing = payments.find((p) => p.id === payment.id);
     setPayments((prev) => prev.map((p) => (p.id === payment.id ? payment : p)));
 
-    // Reverse the previously posted journal entry (if any) and re-post fresh
-    // lines that reflect the updated amount / method / invoice / type so the
-    // ledger stays consistent after edits.
     const refType: JournalEntry['referenceType'] =
       payment.invoiceType === 'sales' ? 'receipt' : 'payment';
     const previousRefType: JournalEntry['referenceType'] = existing
       ? existing.invoiceType === 'sales' ? 'receipt' : 'payment'
       : refType;
 
-    // Remove old journal entries linked to this payment (cover the case where
-    // invoiceType itself changed, e.g. switching between receipt/payment).
     setJournalEntries((prev) =>
       prev.filter(
         (e) =>
@@ -661,7 +700,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       description: `${refType === 'receipt' ? 'Receipt' : 'Payment'} ${payment.reference || payment.invoiceId} (updated)`,
       lines,
       createdAt: new Date().toISOString(),
-      // Bump idempotency key so the new entry isn't deduped against the old one
       idempotencyKey: `${refType}:${payment.id}:${Date.now()}`,
     };
     assertBalancedLines(newEntry.lines, 'Updated payment journal is unbalanced');
@@ -679,10 +717,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const existing = payments.find((p) => p.id === id);
     if (!existing) return;
     setPayments((prev) => prev.filter((p) => p.id !== id));
-    // Remove linked journal entries
     const refType: JournalEntry['referenceType'] = existing.invoiceType === 'sales' ? 'receipt' : 'payment';
     removeJournalByReference(refType, existing.id);
-    // Recompute parent invoice status
     if (existing.invoiceType === 'sales') {
       const inv = invoices.find((i) => i.id === existing.invoiceId);
       if (inv) {
@@ -743,7 +779,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       cursor = parentLookup.get(cursor) ?? null;
     }
 
-    setAccounts((prev) => [...prev, account]);
+    const accountWithCompany = {
+      ...account,
+      company_id: selectedCompanyId,  // ✅ ADDED company_id
+    };
+    setAccounts((prev) => [...prev, accountWithCompany]);
     addAuditEntry({
       type: 'account',
       action: 'created',
@@ -751,6 +791,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       details: 'Chart of accounts item added',
     });
   };
+  
   const deleteAccount = (id: string) => {
     setAccounts((prev) => {
       const target = prev.find((account) => account.id === id);
@@ -770,7 +811,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Journal operations
   const createJournalEntry = (entry: JournalEntry) => {
     assertBalancedLines(entry.lines, 'Journal entry is unbalanced');
-    setJournalEntries((prev) => [...prev, entry]);
+    const entryWithCompany = {
+      ...entry,
+      company_id: selectedCompanyId,  // ✅ ADDED company_id
+    };
+    setJournalEntries((prev) => [...prev, entryWithCompany]);
     setAccountBalances((prev) => applyJournalLinesToBalances(entry.lines, prev));
     addAuditEntry({
       type: 'account',
@@ -779,7 +824,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       details: `Journal entry recorded for ${entry.referenceType}`,
     });
   };
-
 
   const postJournalForReference = (entry: JournalEntry) => {
     const duplicate = entry.idempotencyKey
@@ -847,19 +891,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return generatedEntries.map((entry) => postJournalForReference(entry));
   };
 
-  // Voucher operations
+  // ✅ UPDATED: Voucher operations with company_id
   const addVoucher = (voucher: Voucher) => {
-    setVouchers((prev) => [...prev, voucher]);
+    const voucherWithCompany = {
+      ...voucher,
+      company_id: selectedCompanyId,  // ✅ ADDED company_id
+    };
+    setVouchers((prev) => [...prev, voucherWithCompany]);
     addAuditEntry({
       type: 'voucher',
       action: 'created',
       target: voucher.number,
-      details: `Voucher created for ${voucher.partyName}`,
+      details: `Voucher created for ${voucher.partyName} for company ${selectedCompanyId}`,
       value: voucher.amount,
     });
   };
+  
   const updateVoucher = (voucher: Voucher) => {
-    setVouchers((prev) => prev.map((v) => (v.id === voucher.id ? voucher : v)));
+    const voucherWithCompany = {
+      ...voucher,
+      company_id: selectedCompanyId,  // ✅ ADDED company_id
+    };
+    setVouchers((prev) => prev.map((v) => (v.id === voucher.id ? voucherWithCompany : v)));
     addAuditEntry({
       type: 'voucher', action: 'updated',
       target: voucher.number,
@@ -867,11 +920,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       value: voucher.amount,
     });
   };
+  
   const deleteVoucher = (id: string) => {
     const existing = vouchers.find((v) => v.id === id);
     if (!existing) return;
     setVouchers((prev) => prev.filter((v) => v.id !== id));
-    // Remove all journal entries linked by this voucher id (any referenceType)
     setJournalEntries((prev) => prev.filter((e) => e.referenceId !== id));
     addAuditEntry({
       type: 'voucher', action: 'deleted',
@@ -880,6 +933,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       value: existing.amount,
     });
   };
+  
   const generateVoucherNumber = (type: string) => {
     const prefix = type.toUpperCase().replace(/_/g, '-');
     const year = new Date().getFullYear();
@@ -888,7 +942,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const addJournalVoucher = (voucher: Voucher, lines: JournalLine[]) => {
-    setVouchers((prev) => [...prev, voucher]);
+    const voucherWithCompany = {
+      ...voucher,
+      company_id: selectedCompanyId,  // ✅ ADDED company_id
+    };
+    setVouchers((prev) => [...prev, voucherWithCompany]);
     assertBalancedLines(lines, 'Journal voucher is unbalanced');
     postTransactionEntry({
       date: voucher.date,
@@ -905,21 +963,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  // Item operations
+  // ✅ UPDATED: Item operations with company_id
   const addItem = (item: Item) => {
-    setItems((prev) => [...prev, item]);
+    const itemWithCompany = {
+      ...item,
+      company_id: selectedCompanyId,  // ✅ ADDED company_id
+    };
+    setItems((prev) => [...prev, itemWithCompany]);
   };
+  
   const addSalesman = (s: Salesman) => {
-    setSalesmen((prev) => [...prev, s]);
+    const salesmanWithCompany = {
+      ...s,
+      company_id: selectedCompanyId,  // ✅ ADDED company_id
+    };
+    setSalesmen((prev) => [...prev, salesmanWithCompany]);
   };
+  
   const getSalesman = (id: string) => salesmen.find((s) => s.id === id);
+  
   const updateItem = (item: Item) => {
-    setItems((prev) => prev.map((i) => (i.id === item.id ? item : i)));
+    const itemWithCompany = {
+      ...item,
+      company_id: selectedCompanyId,  // ✅ ADDED company_id
+    };
+    setItems((prev) => prev.map((i) => (i.id === item.id ? itemWithCompany : i)));
   };
+  
   const deleteItem = (id: string) => {
     setItems((prev) => prev.filter((i) => i.id !== id));
   };
+  
   const getItem = (id: string) => items.find((i) => i.id === id);
+  
   const adjustItemStock = (itemId: string, delta: number) => {
     setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, stock: i.stock + delta } : i)));
   };
@@ -950,14 +1026,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const getAccountBalance = (accountId: string) =>
     getNetBalanceForAccount(accountId, accountsById, accountBalances);
 
-  // Company operations
+  // ✅ UPDATED: Company operations with Supabase sync
   const createCompany = (name: string) => {
-    const id = (Math.random() * 1e9).toFixed(0);
+    const id = crypto.randomUUID();
     const newCompany: Company = { id, name };
     setCompanies((prev) => [...prev, newCompany]);
     setSelectedCompanyId(id);
     
-    // ✅ Also create an entry in business_settings for this company
     (async () => {
       try {
         const { supabase } = await import('@/integrations/supabase/client');
@@ -976,9 +1051,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           vat_enabled: settings.vatEnabled ?? true,
           default_vat_percentage: settings.defaultVatPercentage ?? 5,
         });
-        console.log('✅ Company synced to Supabase:', name);
+        console.log('✅ Company created in Supabase:', name);
       } catch (error) {
-        console.error('Failed to sync company to Supabase:', error);
+        console.error('Failed to create company in Supabase:', error);
       }
     })();
   };
@@ -986,7 +1061,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateCompany = (id: string, name: string) => {
     setCompanies((prev) => prev.map((company) => (company.id === id ? { ...company, name } : company)));
     
-    // ✅ Also update in business_settings
     (async () => {
       try {
         const { supabase } = await import('@/integrations/supabase/client');
@@ -1016,7 +1090,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return updated;
     });
 
-    // ✅ Also delete from business_settings
     (async () => {
       try {
         const { supabase } = await import('@/integrations/supabase/client');
@@ -1211,7 +1284,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           number: q.number,
           clientId: q.client_id,
           salesmanId: q.salesman_id,
-          items: [], // Would need to sync line items separately
+          items: [],
           netTotal: q.net_total,
           vatAmount: q.vat_amount || 0,
           total: q.total || q.net_total,
@@ -1237,7 +1310,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           clientId: i.client_id,
           salesmanId: i.salesman_id,
           quotationId: i.quotation_id,
-          items: [], // Would need to sync line items separately
+          items: [],
           netTotal: i.net_total,
           status: i.status,
           dueDate: i.due_date,
@@ -1259,7 +1332,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           invoiceNumberMode: p.invoice_number_mode || 'auto',
           vatEnabled: p.vat_enabled === 0 ? false : true,
           vendorId: p.vendor_id,
-          items: [], // Would need to sync line items separately
+          items: [],
           netTotal: p.net_total,
           status: p.status,
           dueDate: p.due_date,
@@ -1316,9 +1389,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const forceSync = async () => {
     try {
-      // First sync from database to get latest data
       await syncFromDatabase();
-      // Then sync local changes back to database
       await syncToDatabase();
     } catch (error) {
       console.error('Force sync failed:', error);
