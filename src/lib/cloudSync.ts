@@ -4,6 +4,7 @@
  * - Upserts/deletes per-row on local mutations
  * - Subscribes to realtime changes so other devices see updates within ~1s
  * - ✅ UPDATED: Now supports company isolation via company_id filter
+ * - ✅ UPDATED: Added payment_allocations and payment_mode_details collections
  *
  * Local-only / unauthenticated users keep working from localStorage as before.
  */
@@ -22,6 +23,8 @@ const JSON_KEYS = new Set([
   'linked_invoice_ids',
   'linkedInvoiceIds',
   'details',
+  'allocations', // ✅ ADDED for payment allocations
+  'payment_mode_details', // ✅ ADDED for payment mode details
 ]);
 
 // Per-collection metadata so we only send/accept known columns.
@@ -83,6 +86,13 @@ const COLLECTIONS: Record<
       dueDate: 'due_date',
       notes: 'notes',
       terms: 'terms',
+      showDateColumn: 'show_date_column',
+      retentionPercentage: 'retention_percentage',
+      retentionAmount: 'retention_amount',
+      retentionReleased: 'retention_released',
+      retentionStatus: 'retention_status',
+      retentionReleaseDate: 'retention_release_date',
+      retentionReleaseNotes: 'retention_release_notes',
     }),
   },
   projects: {
@@ -110,6 +120,7 @@ const COLLECTIONS: Record<
       dueDate: 'due_date',
       notes: 'notes',
       terms: 'terms',
+      vatEnabled: 'vat_enabled',
     }),
   },
   payments: {
@@ -122,6 +133,46 @@ const COLLECTIONS: Record<
       method: 'method',
       reference: 'reference',
       notes: 'notes',
+      // ✅ NEW: Payment receipt fields
+      receiptNumber: 'receipt_number',
+      receiptDate: 'receipt_date',
+      clientId: 'client_id',
+      receiptType: 'receipt_type',
+      paymentMode: 'payment_mode',
+      amountReceived: 'amount_received',
+      discount: 'discount',
+      netAmount: 'net_amount',
+      unadjustedAmount: 'unadjusted_amount',
+      narration: 'narration',
+      // ✅ NEW: Allocations and mode details stored as JSON
+      allocations: 'allocations',
+      paymentModeDetails: 'payment_mode_details',
+    }),
+  },
+  // ✅ NEW: Payment Allocations collection
+  payment_allocations: {
+    table: 'payment_allocations',
+    cols: baseCols({
+      paymentId: 'payment_id',
+      invoiceId: 'invoice_id',
+      invoiceNumber: 'invoice_number',
+      billDate: 'bill_date',
+      dueDate: 'due_date',
+      billAmount: 'bill_amount',
+      outstandingBefore: 'outstanding_before',
+      receiptAmount: 'receipt_amount',
+      discountAmount: 'discount_amount',
+      adjustedAmount: 'adjusted_amount',
+      outstandingAfter: 'outstanding_after',
+    }),
+  },
+  // ✅ NEW: Payment Mode Details collection
+  payment_mode_details: {
+    table: 'payment_mode_details',
+    cols: baseCols({
+      paymentId: 'payment_id',
+      mode: 'mode',
+      amount: 'amount',
     }),
   },
   accounts: {
@@ -181,6 +232,17 @@ const COLLECTIONS: Record<
     cols: baseCols({
       name: 'name',
       phone: 'phone',
+    }),
+  },
+  // ✅ NEW: Retention Releases collection
+  retention_releases: {
+    table: 'retention_releases',
+    cols: baseCols({
+      invoiceId: 'invoice_id',
+      amount: 'amount',
+      date: 'date',
+      reference: 'reference',
+      notes: 'notes',
     }),
   },
 };
@@ -311,6 +373,14 @@ export async function cloudUpsert(
     row.company_id = item.company_id;
   }
   
+  // Handle JSON fields - stringify if needed
+  if (collection === 'payments' && item.allocations) {
+    row.allocations = JSON.stringify(item.allocations);
+  }
+  if (collection === 'payments' && item.paymentModeDetails) {
+    row.payment_mode_details = JSON.stringify(item.paymentModeDetails);
+  }
+  
   syncBus.emit('saving');
   const { error } = await supabase
     .from(meta.table as any)
@@ -390,8 +460,26 @@ export function cloudSubscribe(
         filter: filter 
       },
       (payload: any) => {
-        const newRow = payload.new ? fromRow(collection, payload.new) : null;
-        const oldRow = payload.old ? fromRow(collection, payload.old) : null;
+        // Parse JSON fields for payments
+        let newRow = payload.new ? fromRow(collection, payload.new) : null;
+        let oldRow = payload.old ? fromRow(collection, payload.old) : null;
+        
+        // Parse JSON strings back to objects
+        if (collection === 'payments') {
+          if (newRow?.allocations && typeof newRow.allocations === 'string') {
+            newRow.allocations = JSON.parse(newRow.allocations);
+          }
+          if (newRow?.paymentModeDetails && typeof newRow.paymentModeDetails === 'string') {
+            newRow.paymentModeDetails = JSON.parse(newRow.paymentModeDetails);
+          }
+          if (oldRow?.allocations && typeof oldRow.allocations === 'string') {
+            oldRow.allocations = JSON.parse(oldRow.allocations);
+          }
+          if (oldRow?.paymentModeDetails && typeof oldRow.paymentModeDetails === 'string') {
+            oldRow.paymentModeDetails = JSON.parse(oldRow.paymentModeDetails);
+          }
+        }
+        
         if (onChange) {
           onChange(payload.eventType, newRow, oldRow);
         }
