@@ -6,7 +6,7 @@ export type PartyType = 'customer' | 'vendor' | 'both';
 // Client types
 export interface Client {
   id: string;
-  company_id?: string; // ✅ ADDED - Company isolation
+  company_id?: string; // Company isolation
   name: string;
   email: string;
   phone: string;
@@ -34,7 +34,7 @@ export interface LineItem {
   vatApplicable?: boolean;
   vatPercentage?: number;
   vatAmount?: number;
-  itemDate?: string; // ✅ Individual item date
+  itemDate?: string; // Individual item date
 }
 
 // Item master
@@ -42,8 +42,8 @@ export type ItemKind = 'goods' | 'services';
 
 export interface Item {
   id: string;
-  company_id?: string; // ✅ ADDED - Company isolation
-  kind?: ItemKind; // defaults to 'goods' for legacy items
+  company_id?: string; // Company isolation
+  kind?: ItemKind;
   code?: string;
   category?: string;
   name: string;
@@ -54,7 +54,7 @@ export interface Item {
   stock: number;
   reorderLevel?: number;
   minStock?: number;
-  active?: boolean; // defaults to true
+  active?: boolean;
   vatApplicable: boolean;
   vatPercentage: number;
   createdAt: string;
@@ -65,7 +65,7 @@ export type QuotationStatus = 'draft' | 'sent' | 'approved' | 'rejected' | 'conv
 
 export interface Quotation {
   id: string;
-  company_id?: string; // ✅ ADDED - Company isolation
+  company_id?: string; // Company isolation
   number: string;
   clientId: string;
   salesmanId?: string;
@@ -106,7 +106,7 @@ export interface ProjectInvoiceSummary {
 
 export interface Project {
   id: string;
-  company_id?: string; // ✅ ADDED - Company isolation
+  company_id?: string; // Company isolation
   name: string;
   customerId: string;
   vendorId: string;
@@ -122,7 +122,7 @@ export interface Project {
 
 export interface Invoice {
   id: string;
-  company_id?: string; // ✅ ADDED - Company isolation
+  company_id?: string; // Company isolation
   number: string;
   manualInvoiceNumber?: string;
   invoiceNumberMode?: 'auto' | 'manual';
@@ -144,10 +144,10 @@ export interface Invoice {
   notes: string;
   terms: string;
   createdAt: string;
-  showDateColumn?: boolean; // ✅ Toggle state
-  retentionPercentage?: number; // ✅ Retention field
-  retentionAmount?: number; // ✅ Retention field
-  retentionReleased?: number; // ✅ Retention field
+  showDateColumn?: boolean; // Toggle state
+  retentionPercentage?: number; // Retention field
+  retentionAmount?: number; // Retention field
+  retentionReleased?: number; // Retention field
   retentionStatus?: 'held' | 'partial' | 'released';
   retentionReleaseDate?: string;
   retentionReleaseNotes?: string;
@@ -159,7 +159,7 @@ export type PurchaseInvoiceStatus = 'draft' | 'sent' | 'partial' | 'paid' | 'ove
 
 export interface PurchaseInvoice {
   id: string;
-  company_id?: string; // ✅ ADDED - Company isolation
+  company_id?: string; // Company isolation
   number: string;
   manualInvoiceNumber?: string;
   invoiceNumberMode?: 'auto' | 'manual';
@@ -176,25 +176,75 @@ export interface PurchaseInvoice {
   updatedAt: string;
 }
 
-// Payment types
+// ✅ UPDATED: Enhanced Payment types with receipt and allocation support
 export type PaymentMethod = 'cash' | 'bank' | 'card' | 'cheque' | 'online';
 
+export type ReceiptType = 'against_bills' | 'advance' | 'on_account';
+
+// ✅ NEW: Bill-wise payment allocation
+export interface PaymentAllocation {
+  id: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  billDate: string;
+  dueDate: string;
+  billAmount: number;
+  outstandingBefore: number;
+  receiptAmount: number;
+  discountAmount: number;
+  adjustedAmount: number;
+  outstandingAfter: number;
+}
+
+// ✅ NEW: Payment mode breakdown
+export interface PaymentModeDetail {
+  id?: string;
+  mode: PaymentMethod;
+  amount: number;
+}
+
+// ✅ UPDATED: Enhanced Payment interface
 export interface Payment {
   id: string;
-  company_id?: string; // ✅ ADDED - Company isolation
-  invoiceId: string;
-  invoiceType: 'sales' | 'purchase';
-  amount: number;
-  date: string;
-  method: PaymentMethod;
+  company_id?: string; // Company isolation
+  // Receipt header
+  receiptNumber: string;
+  receiptDate: string;
+  clientId: string;
+  receiptType: ReceiptType;
+  paymentMode: PaymentMethod;
+  
+  // Amounts
+  amountReceived: number;
+  discount: number;
+  netAmount: number;
+  unadjustedAmount: number;
+  
+  // Details
+  narration: string;
+  
+  // ✅ NEW: Bill-wise allocations
+  allocations: PaymentAllocation[];
+  
+  // ✅ NEW: Payment mode breakdown (if mixed payments)
+  paymentModeDetails: PaymentModeDetail[];
+  
+  // Legacy fields (kept for backward compatibility)
+  invoiceId?: string; // For single invoice payments
+  invoiceType?: 'sales' | 'purchase';
+  amount?: number;
+  date?: string;
+  method?: PaymentMethod;
   reference?: string;
-  notes: string;
-  createdAt: string;
-  // Receipt fields
-  receiptNumber?: string;
+  notes?: string;
+  
+  // Receipt tracking
   receiptPrintedAt?: string;
   isPartialPayment?: boolean;
   invoiceNumberReference?: string;
+  
+  createdAt: string;
+  updatedAt: string;
 }
 
 // Double-Entry Accounting types
@@ -203,7 +253,7 @@ export type AccountNodeKind = 'group' | 'ledger';
 
 export interface Account {
   id: string;
-  company_id?: string; // ✅ ADDED - Company isolation
+  company_id?: string; // Company isolation
   code: string;
   name: string;
   type: AccountType;
@@ -217,7 +267,7 @@ export type VoucherType = 'contra' | 'expense' | 'loan_given' | 'loan_received' 
 
 export interface Voucher {
   id: string;
-  company_id?: string; // ✅ ADDED - Company isolation
+  company_id?: string; // Company isolation
   number: string;
   type: VoucherType;
   date: string;
@@ -232,7 +282,7 @@ export interface Voucher {
 
 export interface JournalEntry {
   id: string;
-  company_id?: string; // ✅ ADDED - Company isolation
+  company_id?: string; // Company isolation
   date: string;
   reference: string;
   referenceType: 'sales_invoice' | 'purchase_invoice' | 'receipt' | 'payment' | 'contra' | 'expense' | 'loan_given' | 'loan_received' | 'journal';
@@ -253,7 +303,7 @@ export interface JournalLine {
 
 export interface AuditEntry {
   id: string;
-  company_id?: string; // ✅ ADDED - Company isolation
+  company_id?: string; // Company isolation
   type: 'client' | 'quotation' | 'invoice' | 'project' | 'purchase_invoice' | 'payment' | 'voucher' | 'account' | 'settings';
   action: 'created' | 'updated' | 'deleted' | 'processed' | 'saved' | 'approved' | 'paid';
   target: string;
@@ -263,10 +313,10 @@ export interface AuditEntry {
   createdAt: string;
 }
 
-// ✅ NEW: Retention Release type
+// Retention Release type
 export interface RetentionRelease {
   id: string;
-  company_id?: string; // ✅ ADDED - Company isolation
+  company_id?: string; // Company isolation
   invoiceId: string;
   amount: number;
   date: string;
@@ -311,7 +361,7 @@ export interface Company {
 // Salesman
 export interface Salesman {
   id: string;
-  company_id?: string; // ✅ ADDED - Company isolation
+  company_id?: string; // Company isolation
   name: string;
   phone?: string;
   createdAt: string;
@@ -332,7 +382,7 @@ export interface BusinessSettings {
   defaultVatPercentage?: number;
   bankName?: string;
   bankAccountNumber?: string;
-  signature?: string; // Base64 encoded signature image
+  signature?: string;
 }
 
 // Currency symbols
@@ -343,6 +393,79 @@ export const currencySymbols: Record<BusinessSettings['currency'], string> = {
   GBP: '£',
   OMR: 'ر.ع.',
 };
+
+// ✅ NEW: Receipt/ Payment DTO for API
+export interface ReceiptDTO {
+  // Header
+  receiptNumber: string;
+  receiptDate: string;
+  clientId: string;
+  clientName?: string;
+  receiptType: ReceiptType;
+  paymentMode: PaymentMethod;
+  
+  // Amounts
+  amountReceived: number;
+  discount: number;
+  netAmount: number;
+  unadjustedAmount: number;
+  
+  // Details
+  narration: string;
+  
+  // Allocations
+  allocations: PaymentAllocation[];
+  
+  // Payment mode breakdown
+  paymentModeDetails: PaymentModeDetail[];
+  
+  // For backward compatibility
+  invoiceIds?: string[];
+}
+
+// ✅ NEW: Outstanding Summary
+export interface OutstandingSummary {
+  clientId: string;
+  clientName: string;
+  totalOutstanding: number;
+  totalOverdue: number;
+  aging: {
+    '0-30': number;
+    '31-60': number;
+    '61-90': number;
+    '90+': number;
+  };
+  invoices: {
+    id: string;
+    number: string;
+    dueDate: string;
+    amount: number;
+    paid: number;
+    outstanding: number;
+    status: InvoiceStatus;
+  }[];
+}
+
+// ✅ NEW: Payment Allocation Summary
+export interface PaymentAllocationSummary {
+  paymentId: string;
+  receiptNumber: string;
+  receiptDate: string;
+  clientName: string;
+  totalAmount: number;
+  allocatedAmount: number;
+  unallocatedAmount: number;
+  invoices: {
+    invoiceNumber: string;
+    billDate: string;
+    dueDate: string;
+    amount: number;
+    receiptAmount: number;
+    discount: number;
+    adjusted: number;
+    outstandingAfter: number;
+  }[];
+}
 
 // Electron API types
 export interface ElectronAPI {

@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Invoice, Client, BusinessSettings, LineItem } from '@/types';
+import { Invoice, Client, BusinessSettings, LineItem, Payment, PaymentAllocation } from '@/types';
 import { currencySymbols } from '@/types';
 import './print-styles.css';
 
@@ -10,11 +10,14 @@ interface InvoicePrintProps {
   showDateColumn?: boolean;
   companyLogo?: string;
   onPrint?: () => void;
+  payments?: Payment[]; // ✅ NEW: Payment history
+  allocations?: PaymentAllocation[]; // ✅ NEW: Bill-wise allocations
 }
 
 /**
  * Production-ready Invoice Print Component
  * Follows professional invoice layout with optional date column
+ * ✅ UPDATED: Now shows payment allocations and outstanding balance
  */
 export const InvoicePrint = React.forwardRef<HTMLDivElement, InvoicePrintProps>(
   ({
@@ -24,6 +27,8 @@ export const InvoicePrint = React.forwardRef<HTMLDivElement, InvoicePrintProps>(
     showDateColumn = true,
     companyLogo,
     onPrint,
+    payments = [],
+    allocations = [],
   }, ref) => {
     const printRef = useRef<HTMLDivElement>(null);
     const resolvedRef = ref || printRef;
@@ -35,12 +40,18 @@ export const InvoicePrint = React.forwardRef<HTMLDivElement, InvoicePrintProps>(
     const vatAmount = invoice.items.reduce((sum, item) => sum + (item.vatAmount || 0), 0);
     const totalAmount = invoice.netTotal;
 
-    // Format currency
+    // ✅ Calculate payment summary
+    const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+    const balanceDue = totalAmount - totalPaid;
+    const isFullyPaid = balanceDue <= 0;
+    const isPartiallyPaid = totalPaid > 0 && balanceDue > 0;
+
+    // ✅ Format currency
     const formatCurrency = (amount: number) => {
-      return `${currencySymbol}${amount.toFixed(2)}`;
+      return `${currencySymbol}${amount.toFixed(3)}`;
     };
 
-    // Format date
+    // ✅ Format date
     const formatDate = (dateStr: string) => {
       try {
         return new Date(dateStr).toLocaleDateString('en-GB', {
@@ -53,7 +64,20 @@ export const InvoicePrint = React.forwardRef<HTMLDivElement, InvoicePrintProps>(
       }
     };
 
-    // Convert amount to words
+    // ✅ Get status badge color
+    const getStatusColor = (status: string) => {
+      const colors: Record<string, string> = {
+        draft: '#6b7280',
+        sent: '#3b82f6',
+        paid: '#10b981',
+        partial: '#f59e0b',
+        overdue: '#ef4444',
+        cancelled: '#6b7280',
+      };
+      return colors[status] || '#6b7280';
+    };
+
+    // ✅ Convert amount to words
     const amountToWords = (amount: number): string => {
       const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
       const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
@@ -124,6 +148,74 @@ export const InvoicePrint = React.forwardRef<HTMLDivElement, InvoicePrintProps>(
               @media print {
                 body { margin: 0; padding: 0; }
               }
+              /* ✅ Print styles for payment sections */
+              .payment-summary-print {
+                page-break-inside: avoid;
+                margin: 15px 0;
+              }
+              .payment-history-print {
+                page-break-inside: avoid;
+                margin: 10px 0;
+              }
+              .payment-history-print table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 12px;
+              }
+              .payment-history-print th {
+                background: #f3f4f6;
+                padding: 6px 10px;
+                text-align: left;
+                font-weight: 600;
+              }
+              .payment-history-print td {
+                padding: 6px 10px;
+                border-bottom: 1px solid #e5e7eb;
+              }
+              .payment-history-print .text-right {
+                text-align: right;
+              }
+              .outstanding-box {
+                background: #f8fafc;
+                border-radius: 8px;
+                padding: 12px 16px;
+                margin: 10px 0;
+                border: 1px solid #e5e7eb;
+              }
+              .outstanding-box .row {
+                display: flex;
+                justify-content: space-between;
+                padding: 4px 0;
+                font-size: 14px;
+              }
+              .outstanding-box .row.total {
+                font-weight: bold;
+                border-top: 2px solid #e5e7eb;
+                padding-top: 8px;
+                margin-top: 4px;
+              }
+              .outstanding-box .row.balance-due {
+                font-size: 16px;
+                color: #dc2626;
+              }
+              .outstanding-box .row.balance-paid {
+                color: #16a34a;
+              }
+              .status-badge {
+                display: inline-block;
+                padding: 2px 10px;
+                border-radius: 12px;
+                font-size: 11px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+              }
+              .status-badge.draft { background: #f3f4f6; color: #6b7280; }
+              .status-badge.sent { background: #dbeafe; color: #2563eb; }
+              .status-badge.paid { background: #d1fae5; color: #059669; }
+              .status-badge.partial { background: #fef3c7; color: #d97706; }
+              .status-badge.overdue { background: #fee2e2; color: #dc2626; }
+              .status-badge.cancelled { background: #f3f4f6; color: #6b7280; }
             </style>
           </head>
           <body>
@@ -171,6 +263,13 @@ export const InvoicePrint = React.forwardRef<HTMLDivElement, InvoicePrintProps>(
                 <div className="invoice-label">Invoice No.</div>
                 <div className="invoice-number">{invoice.number}</div>
               </div>
+              <div className="invoice-status">
+                <span 
+                  className={`status-badge ${invoice.status}`}
+                >
+                  {invoice.status}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -185,6 +284,12 @@ export const InvoicePrint = React.forwardRef<HTMLDivElement, InvoicePrintProps>(
                 <span className="metadata-label">Due Date:</span>
                 <span className="metadata-value">{formatDate(invoice.dueDate)}</span>
               </div>
+              {invoice.retentionAmount && invoice.retentionAmount > 0 && (
+                <div className="metadata-row">
+                  <span className="metadata-label">Retention ({invoice.retentionPercentage || 3}%):</span>
+                  <span className="metadata-value">{formatCurrency(invoice.retentionAmount)}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -210,6 +315,117 @@ export const InvoicePrint = React.forwardRef<HTMLDivElement, InvoicePrintProps>(
             )}
           </div>
 
+          {/* ✅ Payment Summary Box */}
+          <div className="payment-summary-print">
+            <div className="outstanding-box">
+              <div className="row">
+                <span>Total Invoice Amount</span>
+                <span>{formatCurrency(totalAmount)}</span>
+              </div>
+              {totalPaid > 0 && (
+                <div className="row balance-paid">
+                  <span>Total Payments Received</span>
+                  <span>{formatCurrency(totalPaid)}</span>
+                </div>
+              )}
+              <div className={`row total ${isFullyPaid ? 'balance-paid' : 'balance-due'}`}>
+                <span>{isFullyPaid ? '✅ FULLY PAID' : 'BALANCE DUE'}</span>
+                <span>{formatCurrency(balanceDue)}</span>
+              </div>
+              {isPartiallyPaid && (
+                <div className="row" style={{ fontSize: '12px', color: '#6b7280', paddingTop: '4px' }}>
+                  <span>Payment Status</span>
+                  <span className="status-badge partial">PARTIALLY PAID</span>
+                </div>
+              )}
+              {isFullyPaid && (
+                <div className="row" style={{ fontSize: '12px', color: '#6b7280', paddingTop: '4px' }}>
+                  <span>Payment Status</span>
+                  <span className="status-badge paid">PAID IN FULL</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ✅ Payment History Table */}
+          {payments.length > 0 && (
+            <div className="payment-history-print">
+              <h4 style={{ margin: '10px 0 8px 0', fontSize: '14px', textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.5px' }}>
+                PAYMENT HISTORY
+              </h4>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Receipt No.</th>
+                    <th>Method</th>
+                    <th className="text-right">Amount</th>
+                    <th>Reference</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {payments.map((payment) => (
+                    <tr key={payment.id}>
+                      <td>{formatDate(payment.date || payment.receiptDate || payment.createdAt)}</td>
+                      <td>{payment.receiptNumber || payment.reference || '-'}</td>
+                      <td>{payment.method || payment.paymentMode || '-'}</td>
+                      <td className="text-right">{formatCurrency(payment.amount)}</td>
+                      <td>{payment.reference || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ fontWeight: 'bold', borderTop: '2px solid #e5e7eb' }}>
+                    <td colSpan={3}>Total Paid</td>
+                    <td className="text-right">{formatCurrency(totalPaid)}</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+
+          {/* ✅ Bill-wise Allocation Details */}
+          {allocations.length > 0 && (
+            <div className="payment-history-print" style={{ marginTop: '15px' }}>
+              <h4 style={{ margin: '10px 0 8px 0', fontSize: '14px', textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.5px' }}>
+                BILL-WISE ALLOCATION
+              </h4>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Bill No.</th>
+                    <th>Bill Date</th>
+                    <th>Due Date</th>
+                    <th className="text-right">Bill Amount</th>
+                    <th className="text-right">Paid</th>
+                    <th className="text-right">Outstanding</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allocations.map((alloc) => (
+                    <tr key={alloc.id}>
+                      <td>{alloc.invoiceNumber}</td>
+                      <td>{formatDate(alloc.billDate)}</td>
+                      <td>{formatDate(alloc.dueDate)}</td>
+                      <td className="text-right">{formatCurrency(alloc.billAmount)}</td>
+                      <td className="text-right">{formatCurrency(alloc.adjustedAmount)}</td>
+                      <td className="text-right">{formatCurrency(alloc.outstandingAfter)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ fontWeight: 'bold', borderTop: '2px solid #e5e7eb' }}>
+                    <td colSpan={3}>Total</td>
+                    <td className="text-right">{formatCurrency(allocations.reduce((sum, a) => sum + a.billAmount, 0))}</td>
+                    <td className="text-right">{formatCurrency(allocations.reduce((sum, a) => sum + a.adjustedAmount, 0))}</td>
+                    <td className="text-right">{formatCurrency(allocations.reduce((sum, a) => sum + a.outstandingAfter, 0))}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+
           {/* Line Items Table */}
           <table className="invoice-table">
             <thead>
@@ -227,7 +443,7 @@ export const InvoicePrint = React.forwardRef<HTMLDivElement, InvoicePrintProps>(
                 <tr key={item.id || index} className="table-row">
                   {showDateColumn && (
                     <td className="col-date">
-                      {formatDate(invoice.invoiceDate || invoice.createdAt)}
+                      {formatDate(item.itemDate || invoice.invoiceDate || invoice.createdAt)}
                     </td>
                   )}
                   <td className="col-description">
@@ -269,6 +485,18 @@ export const InvoicePrint = React.forwardRef<HTMLDivElement, InvoicePrintProps>(
                 <span className="label">TOTAL</span>
                 <span className="amount">{formatCurrency(totalAmount)}</span>
               </div>
+              {invoice.retentionAmount && invoice.retentionAmount > 0 && (
+                <div className="total-row retention" style={{ color: '#f59e0b' }}>
+                  <span className="label">Retention ({invoice.retentionPercentage || 3}%)</span>
+                  <span className="amount">-{formatCurrency(invoice.retentionAmount)}</span>
+                </div>
+              )}
+              {invoice.retentionAmount && invoice.retentionAmount > 0 && (
+                <div className="total-row net-due" style={{ fontWeight: 'bold', borderTop: '2px solid #e5e7eb', paddingTop: '8px' }}>
+                  <span className="label">Net Amount Due</span>
+                  <span className="amount">{formatCurrency(totalAmount - (invoice.retentionAmount || 0))}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -283,6 +511,14 @@ export const InvoicePrint = React.forwardRef<HTMLDivElement, InvoicePrintProps>(
               <h4>ACCOUNT DETAILS</h4>
               <p><strong>Bank:</strong> {settings.bankName}</p>
               <p><strong>Account No.:</strong> {settings.bankAccountNumber}</p>
+            </div>
+          )}
+
+          {/* Terms Section */}
+          {invoice.terms && (
+            <div className="terms-section" style={{ marginTop: '15px', padding: '10px 0', borderTop: '1px solid #e5e7eb' }}>
+              <h4 style={{ fontSize: '12px', textTransform: 'uppercase', color: '#6b7280', marginBottom: '4px' }}>Terms & Conditions</h4>
+              <p style={{ fontSize: '13px', color: '#4b5563' }}>{invoice.terms}</p>
             </div>
           )}
 

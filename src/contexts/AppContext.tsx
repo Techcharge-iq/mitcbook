@@ -1,7 +1,13 @@
 import React, { createContext, useContext, ReactNode, useEffect, useMemo } from 'react';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useRemoteCollection } from '@/hooks/useRemoteCollection';
-import type { Client, Quotation, Invoice, PurchaseInvoice, BusinessSettings, Payment, Account, JournalEntry, JournalLine, Company, Voucher, VoucherType, AuditEntry, Item, InvoiceStatus, Project, ProjectStatus } from '@/types';
+import type { 
+  Client, Quotation, Invoice, PurchaseInvoice, BusinessSettings, 
+  Payment, Account, JournalEntry, JournalLine, Company, Voucher, 
+  VoucherType, AuditEntry, Item, InvoiceStatus, Project, ProjectStatus,
+  PaymentAllocation, PaymentModeDetail, ReceiptType, ReceiptDTO,
+  OutstandingSummary, PaymentAllocationSummary
+} from '@/types';
 import { buildSalesInvoicePostingEntry, repostSalesInvoice as buildSalesInvoiceRepostEntries } from '@/lib/postingEngine';
 import {
   applyJournalLinesToBalances,
@@ -57,7 +63,7 @@ interface AppContextType {
   getPurchaseInvoice: (id: string) => PurchaseInvoice | undefined;
   generatePurchaseInvoiceNumber: () => string;
   
-  // Payments
+  // ✅ UPDATED: Payment operations with allocation support
   payments: Payment[];
   addPayment: (payment: Payment) => void;
   updatePayment: (payment: Payment) => void;
@@ -65,6 +71,14 @@ interface AppContextType {
   getPaymentsByInvoice: (invoiceId: string) => Payment[];
   getPaymentsByClient: (clientId: string) => Payment[];
   calculateInvoicePaymentStatus: (invoiceId: string) => Extract<InvoiceStatus, 'sent' | 'partial' | 'paid'>;
+  
+  // ✅ NEW: Payment allocation functions
+  createReceipt: (receipt: ReceiptDTO) => Payment;
+  getAllocationsByPayment: (paymentId: string) => PaymentAllocation[];
+  getOutstandingInvoices: (clientId: string) => Invoice[];
+  getClientOutstandingSummary: (clientId: string) => OutstandingSummary;
+  getPaymentAllocationSummary: (paymentId: string) => PaymentAllocationSummary | null;
+  getTotalOutstanding: (clientId: string) => number;
 
   // Accounts & Journal
   accounts: Account[];
@@ -137,6 +151,7 @@ interface AppContextType {
   // Utility functions
   generateQuotationNumber: () => string;
   generateInvoiceNumber: () => string;
+  generateReceiptNumber: () => string;
 }
 
 const defaultSettings: BusinessSettings = {
@@ -160,6 +175,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [selectedCompanyId, setSelectedCompanyId] = useLocalStorage<string>('app_selected_company_id', 'default');
 
   const companyKey = (key: string) => `app_${key}_${selectedCompanyId}`;
+
+  // ✅ NEW: Payment allocations collection
+  const [paymentAllocations, setPaymentAllocations] = useRemoteCollection<PaymentAllocation>(
+    'payment_allocations', 
+    companyKey('payment_allocations'), 
+    [], 
+    selectedCompanyId
+  );
+
+  // ✅ NEW: Payment mode details collection
+  const [paymentModeDetails, setPaymentModeDetails] = useRemoteCollection<PaymentModeDetail>(
+    'payment_mode_details', 
+    companyKey('payment_mode_details'), 
+    [], 
+    selectedCompanyId
+  );
 
   // ✅ NEW: Sync companies from Supabase on load
   useEffect(() => {
@@ -256,7 +287,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .from('business_settings')
         .select('*')
         .eq('user_id', uid)
-        .eq('company_id', selectedCompanyId)  // ✅ ADDED company filter
+        .eq('company_id', selectedCompanyId)
         .maybeSingle();
         
       if (cancelled) return;
@@ -297,7 +328,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       
       const payload = {
         user_id: uid,
-        company_id: selectedCompanyId,  // ✅ ADDED company_id
+        company_id: selectedCompanyId,
         name: settings.name,
         email: settings.email,
         phone: settings.phone,
@@ -317,7 +348,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .from('business_settings')
         .select('id')
         .eq('user_id', uid)
-        .eq('company_id', selectedCompanyId)  // ✅ ADDED company filter
+        .eq('company_id', selectedCompanyId)
         .maybeSingle();
         
       if (existing?.id) {
@@ -370,11 +401,253 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const getRecentAuditLog = (limit = 10) => auditLog.slice(0, limit);
 
+  // ✅ NEW: Generate receipt number
+  const generateReceiptNumber = () => {
+    const year = new Date().getFullYear();
+    const prefix = `RCP-${year}-`;
+    const existing = new Set(payments.map((p) => p.receiptNumber));
+    let count = payments.filter((p) => p.receiptNumber?.startsWith(prefix)).length + 1;
+    let candidate = `${prefix}${count.toString().padStart(5, '0')}`;
+    while (existing.has(candidate)) {
+      count++;
+      candidate = `${prefix}${count.toString().padStart(5, '0')}`;
+    }
+    return candidate;
+  };
+
+  // ✅ NEW: Create receipt with bill-wise allocation
+  const createReceipt = (receipt: ReceiptDTO): Payment => {
+    // 1. Validate total allocations match net amount
+    const totalAllocated = receipt.allocations.reduce((sum, a) => sum + a.adjustedAmount, 0);
+    if (Math.abs(totalAllocated - receipt.netAmount) > 0.001) {
+      throw new Error(`Total allocated (${totalAllocated}) does not match net amount (${receipt.netAmount})`);
+    }
+
+    // 2. Create payment record
+    const payment: Payment = {
+      id: crypto.randomUUID(),
+      company_id: selectedCompanyId,
+      receiptNumber: receipt.receiptNumber,
+      receiptDate: receipt.receiptDate,
+      clientId: receipt.clientId,
+      receiptType: receipt.receiptType,
+      paymentMode: receipt.paymentMode,
+      amountReceived: receipt.amountReceived,
+      discount: receipt.discount,
+      netAmount: receipt.netAmount,
+      unadjustedAmount: receipt.unadjustedAmount,
+      narration: receipt.narration,
+      allocations: receipt.allocations,
+      paymentModeDetails: receipt.paymentModeDetails,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      // Legacy fields for backward compatibility
+      invoiceId: receipt.allocations.length === 1 ? receipt.allocations[0].invoiceId : undefined,
+      invoiceType: 'sales',
+      amount: receipt.netAmount,
+      date: receipt.receiptDate,
+      method: receipt.paymentMode,
+      notes: receipt.narration,
+    };
+
+    // 3. Save payment
+    setPayments((prev) => [...prev, payment]);
+
+    // 4. Save allocations
+    const allocationsWithId = receipt.allocations.map((a) => ({
+      ...a,
+      id: crypto.randomUUID(),
+    }));
+    setPaymentAllocations((prev) => [...prev, ...allocationsWithId]);
+
+    // 5. Save payment mode details
+    const modeDetailsWithId = receipt.paymentModeDetails.map((m) => ({
+      ...m,
+      id: crypto.randomUUID(),
+    }));
+    setPaymentModeDetails((prev) => [...prev, ...modeDetailsWithId]);
+
+    // 6. Update invoice statuses and outstanding amounts
+    for (const allocation of receipt.allocations) {
+      const invoice = invoices.find((i) => i.id === allocation.invoiceId);
+      if (invoice) {
+        const totalPaid = getAllPaymentsForInvoice(allocation.invoiceId) + allocation.adjustedAmount;
+        const newStatus: InvoiceStatus = 
+          totalPaid >= invoice.netTotal ? 'paid' : 
+          totalPaid > 0 ? 'partial' : 'sent';
+        
+        // Update invoice status
+        setInvoices((prev) => prev.map((i) => 
+          i.id === invoice.id ? { 
+            ...i, 
+            status: newStatus,
+            updatedAt: new Date().toISOString()
+          } : i
+        ));
+      }
+    }
+
+    // 7. Create journal entry
+    createPaymentJournalEntry(payment);
+
+    // 8. Add audit entry
+    addAuditEntry({
+      type: 'payment',
+      action: 'created',
+      target: payment.receiptNumber,
+      details: `Receipt created for ${receipt.allocations.length} bill(s)`,
+      value: payment.netAmount,
+    });
+
+    return payment;
+  };
+
+  // ✅ NEW: Helper to get all payments for an invoice
+  const getAllPaymentsForInvoice = (invoiceId: string): number => {
+    return payments
+      .filter((p) => p.allocations?.some((a) => a.invoiceId === invoiceId))
+      .reduce((sum, p) => sum + p.allocations?.reduce((s, a) => s + a.adjustedAmount, 0) || 0, 0);
+  };
+
+  // ✅ NEW: Create journal entry for payment
+  const createPaymentJournalEntry = (payment: Payment) => {
+    const accountId = payment.paymentMode === 'cash' ? 'acc-1000' : 'acc-1010';
+    const lines: JournalLine[] = [
+      { accountId, debit: payment.netAmount, credit: 0 },
+      { accountId: 'acc-1100', debit: 0, credit: payment.netAmount },
+    ];
+
+    // Add discount line if applicable
+    if (payment.discount > 0) {
+      lines.push({ accountId: 'acc-5000', debit: payment.discount, credit: 0 });
+      lines[1] = { accountId: 'acc-1100', debit: 0, credit: payment.netAmount + payment.discount };
+    }
+
+    const entry: JournalEntry = {
+      id: crypto.randomUUID(),
+      company_id: selectedCompanyId,
+      date: payment.receiptDate,
+      reference: payment.receiptNumber,
+      referenceType: 'receipt',
+      referenceId: payment.id,
+      description: `Receipt ${payment.receiptNumber} from ${payment.clientId}`,
+      lines,
+      createdAt: new Date().toISOString(),
+      idempotencyKey: `receipt:${payment.id}`,
+    };
+
+    createJournalEntry(entry);
+  };
+
+  // ✅ NEW: Get allocations by payment
+  const getAllocationsByPayment = (paymentId: string): PaymentAllocation[] => {
+    return paymentAllocations.filter((a) => 
+      payments.find((p) => p.id === paymentId)?.allocations?.some((pa) => pa.id === a.id)
+    );
+  };
+
+  // ✅ NEW: Get outstanding invoices for a client
+  const getOutstandingInvoices = (clientId: string): Invoice[] => {
+    return invoices.filter((i) => 
+      i.clientId === clientId && 
+      i.status !== 'paid' && 
+      i.status !== 'cancelled'
+    );
+  };
+
+  // ✅ NEW: Get total outstanding for a client
+  const getTotalOutstanding = (clientId: string): number => {
+    const outstandingInvoices = getOutstandingInvoices(clientId);
+    return outstandingInvoices.reduce((sum, i) => {
+      const paid = getAllPaymentsForInvoice(i.id);
+      return sum + (i.netTotal - paid);
+    }, 0);
+  };
+
+  // ✅ NEW: Get client outstanding summary
+  const getClientOutstandingSummary = (clientId: string): OutstandingSummary => {
+    const client = getClient(clientId);
+    const clientInvoices = getOutstandingInvoices(clientId);
+    const now = new Date();
+    
+    let totalOutstanding = 0;
+    let totalOverdue = 0;
+    const aging = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
+    const invoiceDetails: OutstandingSummary['invoices'] = [];
+
+    for (const invoice of clientInvoices) {
+      const paid = getAllPaymentsForInvoice(invoice.id);
+      const outstanding = invoice.netTotal - paid;
+      if (outstanding <= 0) continue;
+
+      totalOutstanding += outstanding;
+
+      const dueDate = new Date(invoice.dueDate);
+      const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (daysOverdue > 0) {
+        totalOverdue += outstanding;
+        if (daysOverdue <= 30) aging['0-30'] += outstanding;
+        else if (daysOverdue <= 60) aging['31-60'] += outstanding;
+        else if (daysOverdue <= 90) aging['61-90'] += outstanding;
+        else aging['90+'] += outstanding;
+      }
+
+      invoiceDetails.push({
+        id: invoice.id,
+        number: invoice.number,
+        dueDate: invoice.dueDate,
+        amount: invoice.netTotal,
+        paid,
+        outstanding,
+        status: invoice.status,
+      });
+    }
+
+    return {
+      clientId,
+      clientName: client?.name || 'Unknown Client',
+      totalOutstanding,
+      totalOverdue,
+      aging,
+      invoices: invoiceDetails,
+    };
+  };
+
+  // ✅ NEW: Get payment allocation summary
+  const getPaymentAllocationSummary = (paymentId: string): PaymentAllocationSummary | null => {
+    const payment = payments.find((p) => p.id === paymentId);
+    if (!payment) return null;
+
+    const client = getClient(payment.clientId);
+    const allocations = payment.allocations || [];
+
+    return {
+      paymentId: payment.id,
+      receiptNumber: payment.receiptNumber,
+      receiptDate: payment.receiptDate,
+      clientName: client?.name || 'Unknown Client',
+      totalAmount: payment.netAmount,
+      allocatedAmount: allocations.reduce((sum, a) => sum + a.adjustedAmount, 0),
+      unallocatedAmount: payment.netAmount - allocations.reduce((sum, a) => sum + a.adjustedAmount, 0),
+      invoices: allocations.map((a) => ({
+        invoiceNumber: a.invoiceNumber,
+        billDate: a.billDate,
+        dueDate: a.dueDate,
+        amount: a.billAmount,
+        receiptAmount: a.receiptAmount,
+        discount: a.discountAmount,
+        adjusted: a.adjustedAmount,
+        outstandingAfter: a.outstandingAfter,
+      })),
+    };
+  };
+
   // ✅ UPDATED: Client operations with company_id
   const addClient = (client: Client) => {
     const clientWithCompany = {
       ...client,
-      company_id: selectedCompanyId,  // ✅ ADDED company_id
+      company_id: selectedCompanyId,
     };
     setClients((prev) => [...prev, clientWithCompany]);
     addAuditEntry({
@@ -388,7 +661,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateClient = (client: Client) => {
     const clientWithCompany = {
       ...client,
-      company_id: selectedCompanyId,  // ✅ ADDED company_id
+      company_id: selectedCompanyId,
     };
     setClients((prev) => prev.map((c) => (c.id === client.id ? clientWithCompany : c)));
     addAuditEntry({
@@ -401,7 +674,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const deleteClient = (id: string) => {
     const existing = clients.find((c) => c.id === id);
-    // Guard: warn if open invoices exist for this client
     const openInvoices = invoices.filter(
       (i) => i.clientId === id && !['paid', 'cancelled'].includes(i.status)
     );
@@ -428,7 +700,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addQuotation = (quotation: Quotation) => {
     const quotationWithCompany = {
       ...quotation,
-      company_id: selectedCompanyId,  // ✅ ADDED company_id
+      company_id: selectedCompanyId,
     };
     setQuotations((prev) => [...prev, quotationWithCompany]);
     addAuditEntry({
@@ -443,7 +715,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateQuotation = (quotation: Quotation) => {
     const quotationWithCompany = {
       ...quotation,
-      company_id: selectedCompanyId,  // ✅ ADDED company_id
+      company_id: selectedCompanyId,
     };
     setQuotations((prev) => prev.map((q) => (q.id === quotation.id ? quotationWithCompany : q)));
     addAuditEntry({
@@ -473,7 +745,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addInvoice = (invoice: Invoice) => {
     const invoiceWithCompany = {
       ...invoice,
-      company_id: selectedCompanyId,  // ✅ ADDED company_id
+      company_id: selectedCompanyId,
     };
     setInvoices((prev) => [...prev, invoiceWithCompany]);
     addAuditEntry({
@@ -488,7 +760,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateInvoice = (invoice: Invoice) => {
     const invoiceWithCompany = {
       ...invoice,
-      company_id: selectedCompanyId,  // ✅ ADDED company_id
+      company_id: selectedCompanyId,
     };
     setInvoices((prev) => prev.map((i) => (i.id === invoice.id ? invoiceWithCompany : i)));
     addAuditEntry({
@@ -518,7 +790,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addProject = (project: Project) => {
     const projectWithCompany = {
       ...project,
-      company_id: selectedCompanyId,  // ✅ ADDED company_id
+      company_id: selectedCompanyId,
     };
     setProjects((prev) => [...prev, projectWithCompany]);
     addAuditEntry({
@@ -533,7 +805,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateProject = (project: Project) => {
     const projectWithCompany = {
       ...project,
-      company_id: selectedCompanyId,  // ✅ ADDED company_id
+      company_id: selectedCompanyId,
     };
     setProjects((prev) => prev.map((p) => (p.id === project.id ? projectWithCompany : p)));
     addAuditEntry({
@@ -563,7 +835,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addPurchaseInvoice = (pi: PurchaseInvoice) => {
     const piWithCompany = {
       ...pi,
-      company_id: selectedCompanyId,  // ✅ ADDED company_id
+      company_id: selectedCompanyId,
     };
     setPurchaseInvoices((prev) => [...prev, piWithCompany]);
     addAuditEntry({
@@ -578,7 +850,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updatePurchaseInvoice = (pi: PurchaseInvoice) => {
     const piWithCompany = {
       ...pi,
-      company_id: selectedCompanyId,  // ✅ ADDED company_id
+      company_id: selectedCompanyId,
     };
     setPurchaseInvoices((prev) => prev.map((p) => (p.id === pi.id ? piWithCompany : p)));
     addAuditEntry({
@@ -604,17 +876,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
   const getPurchaseInvoice = (id: string) => purchaseInvoices.find((p) => p.id === id);
 
-  // ✅ UPDATED: Payment operations with company_id
+  // ✅ UPDATED: Payment operations with company_id (legacy)
   const addPayment = (payment: Payment) => {
     const paymentWithCompany = {
       ...payment,
-      company_id: selectedCompanyId,  // ✅ ADDED company_id
+      company_id: selectedCompanyId,
     };
     setPayments((prev) => [...prev, paymentWithCompany]);
     addAuditEntry({
       type: 'payment',
       action: 'processed',
-      target: payment.reference || payment.invoiceId,
+      target: payment.reference || payment.invoiceId || '',
       details: `Payment recorded via ${payment.method} for company ${selectedCompanyId}`,
       value: payment.amount,
     });
@@ -683,17 +955,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const lines: JournalLine[] =
       payment.invoiceType === 'sales'
         ? [
-            { accountId: paymentAccountId, debit: payment.amount, credit: 0 },
-            { accountId: 'acc-1100', debit: 0, credit: payment.amount },
+            { accountId: paymentAccountId, debit: payment.amount || 0, credit: 0 },
+            { accountId: 'acc-1100', debit: 0, credit: payment.amount || 0 },
           ]
         : [
-            { accountId: 'acc-2000', debit: payment.amount, credit: 0 },
-            { accountId: paymentAccountId, debit: 0, credit: payment.amount },
+            { accountId: 'acc-2000', debit: payment.amount || 0, credit: 0 },
+            { accountId: paymentAccountId, debit: 0, credit: payment.amount || 0 },
           ];
 
     const newEntry: JournalEntry = {
       id: crypto.randomUUID(),
-      date: payment.date,
+      date: payment.date || new Date().toISOString().split('T')[0],
       reference: `${refType === 'receipt' ? 'REC' : 'PAY'}-${payment.id.slice(0, 8)}`,
       referenceType: refType,
       referenceId: payment.id,
@@ -707,7 +979,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     addAuditEntry({
       type: 'payment', action: 'updated',
-      target: payment.reference || payment.invoiceId,
+      target: payment.reference || payment.invoiceId || '',
       details: `Payment updated (${payment.method}) – journal reversed and reposted`,
       value: payment.amount,
     });
@@ -717,8 +989,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const existing = payments.find((p) => p.id === id);
     if (!existing) return;
     setPayments((prev) => prev.filter((p) => p.id !== id));
+    
+    // Remove allocations
+    setPaymentAllocations((prev) => prev.filter((a) => 
+      !existing.allocations?.some((pa) => pa.id === a.id)
+    ));
+    
+    // Remove mode details
+    setPaymentModeDetails((prev) => prev.filter((m) => 
+      !existing.paymentModeDetails?.some((pm) => pm.id === m.id)
+    ));
+    
     const refType: JournalEntry['referenceType'] = existing.invoiceType === 'sales' ? 'receipt' : 'payment';
     removeJournalByReference(refType, existing.id);
+    
     if (existing.invoiceType === 'sales') {
       const inv = invoices.find((i) => i.id === existing.invoiceId);
       if (inv) {
@@ -741,7 +1025,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     addAuditEntry({
       type: 'payment', action: 'deleted',
-      target: existing.reference || existing.invoiceId,
+      target: existing.reference || existing.invoiceId || '',
       details: 'Payment deleted and journal reversed',
       value: existing.amount,
     });
@@ -781,7 +1065,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const accountWithCompany = {
       ...account,
-      company_id: selectedCompanyId,  // ✅ ADDED company_id
+      company_id: selectedCompanyId,
     };
     setAccounts((prev) => [...prev, accountWithCompany]);
     addAuditEntry({
@@ -813,7 +1097,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     assertBalancedLines(entry.lines, 'Journal entry is unbalanced');
     const entryWithCompany = {
       ...entry,
-      company_id: selectedCompanyId,  // ✅ ADDED company_id
+      company_id: selectedCompanyId,
     };
     setJournalEntries((prev) => [...prev, entryWithCompany]);
     setAccountBalances((prev) => applyJournalLinesToBalances(entry.lines, prev));
@@ -895,7 +1179,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addVoucher = (voucher: Voucher) => {
     const voucherWithCompany = {
       ...voucher,
-      company_id: selectedCompanyId,  // ✅ ADDED company_id
+      company_id: selectedCompanyId,
     };
     setVouchers((prev) => [...prev, voucherWithCompany]);
     addAuditEntry({
@@ -910,7 +1194,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateVoucher = (voucher: Voucher) => {
     const voucherWithCompany = {
       ...voucher,
-      company_id: selectedCompanyId,  // ✅ ADDED company_id
+      company_id: selectedCompanyId,
     };
     setVouchers((prev) => prev.map((v) => (v.id === voucher.id ? voucherWithCompany : v)));
     addAuditEntry({
@@ -944,7 +1228,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addJournalVoucher = (voucher: Voucher, lines: JournalLine[]) => {
     const voucherWithCompany = {
       ...voucher,
-      company_id: selectedCompanyId,  // ✅ ADDED company_id
+      company_id: selectedCompanyId,
     };
     setVouchers((prev) => [...prev, voucherWithCompany]);
     assertBalancedLines(lines, 'Journal voucher is unbalanced');
@@ -967,7 +1251,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addItem = (item: Item) => {
     const itemWithCompany = {
       ...item,
-      company_id: selectedCompanyId,  // ✅ ADDED company_id
+      company_id: selectedCompanyId,
     };
     setItems((prev) => [...prev, itemWithCompany]);
   };
@@ -975,7 +1259,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addSalesman = (s: Salesman) => {
     const salesmanWithCompany = {
       ...s,
-      company_id: selectedCompanyId,  // ✅ ADDED company_id
+      company_id: selectedCompanyId,
     };
     setSalesmen((prev) => [...prev, salesmanWithCompany]);
   };
@@ -985,7 +1269,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateItem = (item: Item) => {
     const itemWithCompany = {
       ...item,
-      company_id: selectedCompanyId,  // ✅ ADDED company_id
+      company_id: selectedCompanyId,
     };
     setItems((prev) => prev.map((i) => (i.id === item.id ? itemWithCompany : i)));
   };
@@ -1109,7 +1393,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })();
 
     try {
-      const keys = ['clients', 'quotations', 'invoices', 'purchase_invoices', 'payments', 'accounts', 'journal_entries', 'account_balances', 'settings', 'vouchers', 'items', 'audit_log'];
+      const keys = ['clients', 'quotations', 'invoices', 'purchase_invoices', 'payments', 'accounts', 'journal_entries', 'account_balances', 'settings', 'vouchers', 'items', 'audit_log', 'payment_allocations', 'payment_mode_details'];
       keys.forEach(k => window.localStorage.removeItem(`app_${k}_${id}`));
     } catch (error) {
       console.warn('Failed to remove company data', error);
@@ -1163,7 +1447,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     
     if (!invoice) return 'sent';
     
-    const totalPaid = invoicePayments.reduce((sum, payment) => sum + payment.amount, 0);
+    const totalPaid = invoicePayments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
     const invoiceTotal = invoice.netTotal;
     
     if (totalPaid === 0) {
@@ -1222,12 +1506,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
         );
       }
 
-      // Sync payments
+      // Sync payments (including allocations and mode details)
       for (const payment of payments) {
         await window.electronAPI!.query(
-          `INSERT OR REPLACE INTO payments (id, invoice_id, invoice_type, amount, date, method, reference, notes, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [payment.id, payment.invoiceId, payment.invoiceType, payment.amount, payment.date, payment.method, payment.reference, payment.notes, payment.createdAt]
+          `INSERT OR REPLACE INTO payments (id, invoice_id, invoice_type, amount, date, method, reference, notes, created_at, receipt_number, receipt_date, receipt_type, amount_received, discount, net_amount, unadjusted_amount, narration)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            payment.id, 
+            payment.invoiceId || '', 
+            payment.invoiceType || 'sales', 
+            payment.amount || 0, 
+            payment.date || payment.receiptDate, 
+            payment.method || payment.paymentMode, 
+            payment.reference || payment.receiptNumber, 
+            payment.notes || payment.narration, 
+            payment.createdAt,
+            payment.receiptNumber || '',
+            payment.receiptDate || '',
+            payment.receiptType || 'against_bills',
+            payment.amountReceived || 0,
+            payment.discount || 0,
+            payment.netAmount || 0,
+            payment.unadjustedAmount || 0,
+            payment.narration || ''
+          ]
         );
       }
 
@@ -1357,6 +1659,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
           reference: p.reference,
           notes: p.notes,
           createdAt: p.created_at,
+          receiptNumber: p.receipt_number || '',
+          receiptDate: p.receipt_date || p.date,
+          receiptType: p.receipt_type || 'against_bills',
+          amountReceived: p.amount_received || p.amount,
+          discount: p.discount || 0,
+          netAmount: p.net_amount || p.amount,
+          unadjustedAmount: p.unadjusted_amount || 0,
+          narration: p.narration || p.notes || '',
+          allocations: [],
+          paymentModeDetails: [],
         }));
         setPayments(formattedPayments);
       }
@@ -1407,6 +1719,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         projects, setProjects, addProject, updateProject, deleteProject, getProject,
         purchaseInvoices, setPurchaseInvoices, addPurchaseInvoice, updatePurchaseInvoice, deletePurchaseInvoice, getPurchaseInvoice, generatePurchaseInvoiceNumber,
         payments, addPayment, updatePayment, deletePayment, getPaymentsByInvoice, getPaymentsByClient, calculateInvoicePaymentStatus,
+        createReceipt, getAllocationsByPayment, getOutstandingInvoices, getClientOutstandingSummary, getPaymentAllocationSummary, getTotalOutstanding,
         accounts, setAccounts, addAccount, deleteAccount,
         journalEntries, accountBalances, createJournalEntry, postJournalForReference, postTransactionEntry, reverseJournalForReference, postSalesInvoice, repostSalesInvoice, reconcileJournalBalances, getAccountBalance,
         vouchers, addVoucher, updateVoucher, deleteVoucher, generateVoucherNumber,
@@ -1416,12 +1729,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         settings, setSettings,
         syncToDatabase, syncFromDatabase, forceSync, isElectron,
         auditLog, addAuditEntry, getRecentAuditLog,
-        generateQuotationNumber, generateInvoiceNumber,
+        generateQuotationNumber, generateInvoiceNumber, generateReceiptNumber,
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }), [
         companies, selectedCompanyId,
         clients, quotations, invoices, projects, purchaseInvoices,
-        payments, accounts, journalEntries, accountBalances,
+        payments, paymentAllocations, paymentModeDetails,
+        accounts, journalEntries, accountBalances,
         vouchers, items, salesmen, settings, auditLog, isElectron,
       ])}
     >
