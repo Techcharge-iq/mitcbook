@@ -41,6 +41,7 @@ export default function InvoiceForm() {
     postSalesInvoice, repostSalesInvoice, adjustItemStock, calculateInvoicePaymentStatus,
     salesmen, addSalesman,
     projects,
+    payments, getPaymentsByInvoice,
   } = useApp();
 
   const isEditing = id && id !== 'new';
@@ -50,13 +51,10 @@ export default function InvoiceForm() {
   const currencySymbol = currencySymbols[settings.currency];
 
   // ✅ State for date column toggle - OFF by default
-  // If editing, load from existing invoice, otherwise default to false
   const [showDateColumn, setShowDateColumn] = useState(() => {
-    // When editing, use the saved value from the invoice
     if (existingInvoice && existingInvoice.showDateColumn !== undefined) {
       return existingInvoice.showDateColumn;
     }
-    // Default: OFF (false) - Show S.No, hide Date
     return false;
   });
 
@@ -90,7 +88,7 @@ export default function InvoiceForm() {
   );
 
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
-  const [newClient, setNewClient] = useState({ name: '', email: '', phone: '', address: '' });
+  const [newClient, setNewClient] = useState({ name: '', email: '', phone: '', address: '', taxRegistrationNumber: '' });
   const [isAddSalesmanOpen, setIsAddSalesmanOpen] = useState(false);
   const [newSalesman, setNewSalesman] = useState({ name: '', phone: '' });
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
@@ -110,7 +108,8 @@ export default function InvoiceForm() {
   const vatRate = vatEnabled ? (settings.defaultVatPercentage ?? 5) : 0;
   const vatTotal = useMemo(() => +(netTotal * vatRate / 100).toFixed(3), [netTotal, vatRate]);
   const grandTotal = +(netTotal + vatTotal).toFixed(3);
-  // Calculate displayed status based on payment records
+  
+  // ✅ Calculate payment status
   const displayedStatus: InvoiceStatus | 'draft' = existingInvoice ? calculateInvoicePaymentStatus(existingInvoice.id) : 'draft';
   const currentStatus: InvoiceStatus = existingInvoice?.status === 'draft' 
     ? 'draft' 
@@ -124,23 +123,40 @@ export default function InvoiceForm() {
   );
 
   const projectActivities = useMemo(() => selectedProject?.activities || [], [selectedProject]);
+
+  // ✅ Calculate already billed activities
+  const getBilledActivityIds = useMemo(() => {
+    if (!selectedProject) return new Set<string>();
+    
+    const previousInvoices = invoices.filter(
+      (inv) => inv.projectId === selectedProject.id && inv.id !== existingInvoice?.id
+    );
+    
+    const billedIds = new Set<string>();
+    for (const inv of previousInvoices) {
+      if (inv.selectedActivityIds) {
+        for (const id of inv.selectedActivityIds) {
+          billedIds.add(id);
+        }
+      }
+    }
+    return billedIds;
+  }, [invoices, selectedProject, existingInvoice]);
+
+  // ✅ Filter available activities (not yet fully billed)
+  const availableActivities = useMemo(() => {
+    if (!selectedProject) return [];
+    
+    return selectedProject.activities.filter((activity) => {
+      const isFullyBilled = getBilledActivityIds.has(activity.id);
+      return !isFullyBilled;
+    });
+  }, [selectedProject, getBilledActivityIds]);
+
   const selectedProjectActivities = useMemo(
     () => projectActivities.filter((activity) => selectedActivityIds.includes(activity.id)),
     [projectActivities, selectedActivityIds],
   );
-
-  // ✅ Load saved toggle state when editing
-  useEffect(() => {
-    if (isEditing && existingInvoice) {
-      // Load the saved showDateColumn value from the invoice
-      if (existingInvoice.showDateColumn !== undefined) {
-        setShowDateColumn(existingInvoice.showDateColumn);
-      } else {
-        // If not saved, default to false (OFF)
-        setShowDateColumn(false);
-      }
-    }
-  }, [isEditing, existingInvoice]);
 
   useEffect(() => {
     if (invoiceType === 'project' && selectedProject && !isEditing) {
@@ -204,8 +220,18 @@ export default function InvoiceForm() {
     if (invoiceNumberMode === 'auto' && !isEditing) {
       setInvoiceNumber(generateInvoiceNumber());
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoiceNumberMode, isEditing]);
+
+  // ✅ Load saved toggle state when editing
+  useEffect(() => {
+    if (isEditing && existingInvoice) {
+      if (existingInvoice.showDateColumn !== undefined) {
+        setShowDateColumn(existingInvoice.showDateColumn);
+      } else {
+        setShowDateColumn(false);
+      }
+    }
+  }, [isEditing, existingInvoice]);
 
   const projectSummary = useMemo(() => {
     if (invoiceType !== 'project' || !selectedProject) return undefined;
@@ -334,11 +360,20 @@ export default function InvoiceForm() {
 
   const handleAddClient = () => {
     if (!newClient.name.trim()) { toast({ title: 'Error', description: 'Client name is required', variant: 'destructive' }); return; }
-    const client: Client = { id: crypto.randomUUID(), ...newClient, type: 'customer', createdAt: new Date().toISOString() };
+    const client: Client = { 
+      id: crypto.randomUUID(), 
+      name: newClient.name,
+      email: newClient.email || '',
+      phone: newClient.phone || '',
+      address: newClient.address || '',
+      type: 'customer',
+      taxRegistrationNumber: newClient.taxRegistrationNumber || '',
+      createdAt: new Date().toISOString() 
+    };
     addClient(client);
     setClientId(client.id);
     setIsAddClientOpen(false);
-    setNewClient({ name: '', email: '', phone: '', address: '' });
+    setNewClient({ name: '', email: '', phone: '', address: '', taxRegistrationNumber: '' });
     toast({ title: 'Client added', description: `${client.name} has been added.` });
   };
 
@@ -349,7 +384,7 @@ export default function InvoiceForm() {
     if (invoices.some((invoice) => invoice.number === invoiceNumber && invoice.id !== existingInvoice?.id)) { toast({ title: 'Error', description: 'Invoice number already exists', variant: 'destructive' }); return; }
     if (items.some((item) => !item.name.trim())) { toast({ title: 'Error', description: 'All items must have a name', variant: 'destructive' }); return; }
     if (invoiceType === 'project' && !projectId) { toast({ title: 'Error', description: 'Please select a project for project invoices', variant: 'destructive' }); return; }
-    if (invoiceType === 'project' && selectedActivityIds.length === 0) { toast({ title: 'Error', description: 'Please select completed project activities for billing', variant: 'destructive' }); return; }
+    if (invoiceType === 'project' && selectedActivityIds.length === 0) { toast({ title: 'Error', description: 'Please select at least one unbilled project activity', variant: 'destructive' }); return; }
     if (invoiceType === 'project' && projectInvoicePercentage <= 0) { toast({ title: 'Error', description: 'Project billing percentage must be greater than 0', variant: 'destructive' }); return; }
 
     const now = new Date().toISOString();
@@ -376,7 +411,7 @@ export default function InvoiceForm() {
         billingPercentage: invoiceType === 'project' ? projectInvoicePercentage : undefined,
         billingValue: invoiceType === 'project' ? projectBillingValue : undefined,
         projectSummary: invoiceType === 'project' ? projectSummary : undefined,
-        showDateColumn: showDateColumn, // ✅ SAVE the toggle state
+        showDateColumn: showDateColumn,
         updatedAt: now,
       };
 
@@ -413,21 +448,18 @@ export default function InvoiceForm() {
         notes,
         terms,
         salesmanId,
-        showDateColumn: showDateColumn, // ✅ SAVE the toggle state
+        showDateColumn: showDateColumn,
         createdAt: now,
         updatedAt: now,
       };
       addInvoice(newInvoice);
 
-      // Decrement stock for each item that has an itemId
       items.forEach((li) => { if (li.itemId) adjustItemStock(li.itemId, -li.quantity); });
 
-      // Mark source quotation as converted
       if (sourceQuotation) {
         updateQuotation({ ...sourceQuotation, status: 'converted', convertedInvoiceId: newInvoice.id, updatedAt: now });
       }
 
-      // Post journal using the shared posting service
       try {
         postSalesInvoice(newInvoice);
       } catch (err) {
@@ -508,12 +540,7 @@ export default function InvoiceForm() {
     <div className="space-y-3 pb-24 lg:pb-4">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={() => navigate('/invoices')} 
-            className="h-8 w-8 shrink-0"
-          >
+          <Button variant="ghost" size="icon" onClick={() => navigate('/invoices')} className="h-8 w-8 shrink-0">
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="min-w-0">
@@ -554,7 +581,7 @@ export default function InvoiceForm() {
         )}
       </div>
 
-      {/* ✅ DATE COLUMN TOGGLE - Always visible */}
+      {/* ✅ DATE COLUMN TOGGLE */}
       <Card>
         <CardContent className="px-3 py-3">
           <div className="flex items-center justify-between rounded-md border p-3">
@@ -566,15 +593,35 @@ export default function InvoiceForm() {
                   : '🔢 S.No visible | Date column hidden'}
               </p>
             </div>
-            <Switch 
-              checked={showDateColumn} 
-              onCheckedChange={setShowDateColumn} 
-            />
+            <Switch checked={showDateColumn} onCheckedChange={setShowDateColumn} />
           </div>
         </CardContent>
       </Card>
 
-      {/* Client & Due Date */}
+      {/* ✅ Invoice Preview */}
+      {isEditing && existingInvoice && (
+        <Card>
+          <CardHeader className="py-2.5 px-3">
+            <CardTitle className="text-sm flex items-center justify-between">
+              <span>Invoice Preview</span>
+              <span className="text-xs font-normal text-muted-foreground">
+                {showDateColumn ? '📅 Showing Date column' : '🔢 Showing S.No column'}
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-3 pb-3">
+            <InvoicePrint
+              invoice={existingInvoice}
+              client={getClient(clientId)}
+              settings={settings}
+              showDateColumn={showDateColumn}
+              payments={getPaymentsByInvoice(existingInvoice.id)}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Client & Details */}
       <Card>
         <CardHeader className="py-2.5 px-3"><CardTitle className="text-sm">Client & Details</CardTitle></CardHeader>
         <CardContent className="px-3 pb-3">
@@ -718,6 +765,7 @@ export default function InvoiceForm() {
         </CardContent>
       </Card>
 
+      {/* ✅ Project Summary */}
       {invoiceType === 'project' && selectedProject && projectSummary && (
         <Card>
           <CardHeader className="py-2.5 px-3"><CardTitle className="text-sm">Project Summary</CardTitle></CardHeader>
@@ -728,61 +776,140 @@ export default function InvoiceForm() {
                 <p className="text-sm font-semibold">{currencySymbol}{projectSummary.projectTotalValue.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
               </div>
               <div className="rounded-md border bg-muted/20 p-3">
-                <p className="text-[11px] uppercase text-muted-foreground">Previous</p>
-                <p className="text-sm font-semibold">{projectSummary.previousPercentage.toFixed(2)}%</p>
-                <p className="text-xs text-muted-foreground">{currencySymbol}{projectSummary.previousAmount.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
-              </div>
-              <div className="rounded-md border bg-muted/20 p-3">
-                <p className="text-[11px] uppercase text-muted-foreground">Current</p>
-                <p className="text-sm font-semibold">{projectSummary.currentPercentage.toFixed(2)}%</p>
-                <p className="text-xs text-muted-foreground">{currencySymbol}{projectSummary.currentAmount.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
-              </div>
-              <div className="rounded-md border bg-muted/20 p-3">
-                <p className="text-[11px] uppercase text-muted-foreground">Total Progress</p>
+                <p className="text-[11px] uppercase text-muted-foreground">Billed</p>
                 <p className="text-sm font-semibold">{projectSummary.totalInvoicedPercentage.toFixed(2)}%</p>
                 <p className="text-xs text-muted-foreground">{currencySymbol}{projectSummary.totalInvoicedAmount.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
               </div>
               <div className="rounded-md border bg-muted/20 p-3">
                 <p className="text-[11px] uppercase text-muted-foreground">Remaining</p>
-                <p className="text-sm font-semibold">{projectSummary.remainingPercentage.toFixed(2)}%</p>
+                <p className="text-sm font-semibold text-primary">{projectSummary.remainingPercentage.toFixed(2)}%</p>
                 <p className="text-xs text-muted-foreground">{currencySymbol}{projectSummary.remainingAmount.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
               </div>
+              <div className="rounded-md border bg-muted/20 p-3">
+                <p className="text-[11px] uppercase text-muted-foreground">Unbilled Activities</p>
+                <p className="text-sm font-semibold">{availableActivities.length}</p>
+                <p className="text-xs text-muted-foreground">of {selectedProject.activities.length} total</p>
+              </div>
+              <div className="rounded-md border bg-muted/20 p-3">
+                <p className="text-[11px] uppercase text-muted-foreground">Billed Activities</p>
+                <p className="text-sm font-semibold">{selectedProject.activities.length - availableActivities.length}</p>
+                <p className="text-xs text-muted-foreground">Fully completed</p>
+              </div>
             </div>
-            <Progress value={Math.min(100, Math.max(0, projectSummary.totalInvoicedPercentage))} />
+            <Progress value={Math.min(100, Math.max(0, projectSummary.totalInvoicedPercentage))} className="h-2" />
+            <div className="flex justify-between text-[10px] text-muted-foreground">
+              <span>Billed: {projectSummary.totalInvoicedPercentage.toFixed(1)}%</span>
+              <span>Remaining: {projectSummary.remainingPercentage.toFixed(1)}%</span>
+            </div>
           </CardContent>
         </Card>
       )}
 
+      {/* ✅ Project Activities - Only Show Unbilled */}
       {invoiceType === 'project' && selectedProject && (
         <Card>
-          <CardHeader className="py-2.5 px-3"><CardTitle className="text-sm">Project Activities</CardTitle></CardHeader>
+          <CardHeader className="py-2.5 px-3">
+            <CardTitle className="text-sm">Project Activities</CardTitle>
+          </CardHeader>
           <CardContent className="px-3 pb-3 space-y-3">
-            <p className="text-xs text-muted-foreground">Select the project activities to include on this invoice. The current billing percentage and value are calculated from these selections.</p>
+            <p className="text-xs text-muted-foreground">
+              Select unbilled project activities to include on this invoice.
+              {availableActivities.length === 0 && ' All activities have been fully billed.'}
+            </p>
+            
             <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-              <span>{selectedProjectActivities.length} activity selected</span>
-              <span>Billing {projectInvoicePercentage.toFixed(2)}% / {currencySymbol}{projectBillingValue.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
+              <span>Available: {availableActivities.length} of {selectedProject.activities.length} activities</span>
+              <span>•</span>
+              <span>Billed: {selectedProject.activities.length - availableActivities.length} activities</span>
+              <span>•</span>
+              <span>Remaining Value: {currencySymbol}{
+                availableActivities.reduce((sum, a) => sum + a.value, 0)
+                  .toLocaleString('en-IN', { minimumFractionDigits: 3 })
+              }</span>
             </div>
+
             <div className="space-y-2">
-              {projectActivities.length > 0 ? projectActivities.map((activity) => (
-                <label key={activity.id} className="flex items-center gap-3 rounded-md border p-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedActivityIds.includes(activity.id)}
-                    onChange={(event) => {
-                      const checked = event.target.checked;
-                      setSelectedActivityIds((prev) => checked ? [...prev, activity.id] : prev.filter((id) => id !== activity.id));
-                    }}
-                    className="h-4 w-4 rounded border-muted-foreground text-primary focus:ring-primary"
-                  />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium">{activity.name}</p>
-                    <p className="text-xs text-muted-foreground">{activity.percentage}% | {currencySymbol}{activity.value.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</p>
-                  </div>
-                </label>
-              )) : (
-                <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">No activities defined for this project.</div>
+              {availableActivities.length > 0 ? (
+                availableActivities.map((activity) => {
+                  const isSelected = selectedActivityIds.includes(activity.id);
+                  return (
+                    <label 
+                      key={activity.id} 
+                      className={`flex items-center gap-3 rounded-md border p-3 cursor-pointer transition-colors ${
+                        isSelected ? 'border-primary/50 bg-primary/5' : 'hover:bg-muted/50'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setSelectedActivityIds((prev) => 
+                            checked ? [...prev, activity.id] : prev.filter((id) => id !== activity.id)
+                          );
+                        }}
+                        className="h-4 w-4 rounded border-muted-foreground text-primary focus:ring-primary"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium">{activity.name}</p>
+                          {getBilledActivityIds.has(activity.id) && (
+                            <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-success border-success/30">
+                              ✅ Billed
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Value: {currencySymbol}{activity.value.toLocaleString('en-IN', { minimumFractionDigits: 3 })} • 
+                          {activity.percentage}% of project
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs font-medium">
+                          {currencySymbol}{activity.value.toLocaleString('en-IN', { minimumFractionDigits: 3 })}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">{activity.percentage}%</p>
+                      </div>
+                    </label>
+                  );
+                })
+              ) : (
+                <div className="rounded-md border bg-muted/20 p-4 text-center text-sm text-muted-foreground">
+                  <p className="font-medium">✅ All activities have been billed</p>
+                  <p className="text-xs mt-1">This project is fully invoiced</p>
+                </div>
               )}
             </div>
+
+            {/* Selected Summary */}
+            {selectedActivityIds.length > 0 && (
+              <div className="rounded-md bg-primary/5 p-3 space-y-1">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Selected Activities:</span>
+                  <span className="font-medium">{selectedActivityIds.length}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Billing Value:</span>
+                  <span className="font-medium">
+                    {currencySymbol}{
+                      selectedProject.activities
+                        .filter(a => selectedActivityIds.includes(a.id))
+                        .reduce((sum, a) => sum + a.value, 0)
+                        .toLocaleString('en-IN', { minimumFractionDigits: 3 })
+                    }
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Billing Percentage:</span>
+                  <span className="font-medium">
+                    {selectedProject.activities
+                      .filter(a => selectedActivityIds.includes(a.id))
+                      .reduce((sum, a) => sum + a.percentage, 0)
+                      .toFixed(2)}%
+                  </span>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -883,13 +1010,7 @@ export default function InvoiceForm() {
                           {currencySymbol}{(item.total + (item.vatApplicable ? (item.vatAmount ?? 0) : 0)).toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                         </td>
                         <td className="py-2">
-                          <Button 
-                            type="button" 
-                            variant="ghost" 
-                            size="icon" 
-                            onClick={() => removeItem(index)} 
-                            className="h-7 w-7"
-                          >
+                          <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(index)} className="h-7 w-7">
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </td>
@@ -944,13 +1065,7 @@ export default function InvoiceForm() {
                           {currencySymbol}{(item.total + (item.vatApplicable ? (item.vatAmount ?? 0) : 0)).toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                         </td>
                         <td className="py-2">
-                          <Button 
-                            type="button" 
-                            variant="ghost" 
-                            size="icon" 
-                            onClick={() => removeItem(index)} 
-                            className="h-7 w-7"
-                          >
+                          <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(index)} className="h-7 w-7">
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </td>
@@ -1023,25 +1138,11 @@ export default function InvoiceForm() {
         <CardContent className="px-3 pb-3 space-y-3">
           <div className="space-y-1.5">
             <Label htmlFor="notes" className="text-xs">Notes</Label>
-            <Textarea 
-              id="notes" 
-              value={notes} 
-              onChange={(e) => setNotes(e.target.value)} 
-              placeholder="Notes for client..." 
-              rows={2} 
-              className="resize-none text-sm" 
-            />
+            <Textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes for client..." rows={2} className="resize-none text-sm" />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="terms" className="text-xs">Terms & Conditions</Label>
-            <Textarea 
-              id="terms" 
-              value={terms} 
-              onChange={(e) => setTerms(e.target.value)} 
-              placeholder="Payment terms..." 
-              rows={2} 
-              className="resize-none text-sm" 
-            />
+            <Textarea id="terms" value={terms} onChange={(e) => setTerms(e.target.value)} placeholder="Payment terms..." rows={2} className="resize-none text-sm" />
           </div>
         </CardContent>
       </Card>
@@ -1088,9 +1189,7 @@ export default function InvoiceForm() {
         <SheetContent side="bottom" className="h-auto max-h-[85vh]">
           <SheetHeader className="text-left">
             <SheetTitle>{editingItemIndex !== null ? 'Edit Item' : 'Add Item'}</SheetTitle>
-            <SheetDescription>
-              {editingItemIndex !== null ? 'Update item details' : 'Add a new line item'}
-            </SheetDescription>
+            <SheetDescription>{editingItemIndex !== null ? 'Update item details' : 'Add a new line item'}</SheetDescription>
           </SheetHeader>
           <div className="space-y-3 mt-4">
             <div className="space-y-1.5">
@@ -1172,11 +1271,12 @@ export default function InvoiceForm() {
         </SheetContent>
       </Sheet>
 
+      {/* Add Client Dialog */}
       <Dialog open={isAddClientOpen} onOpenChange={setIsAddClientOpen}>
-        <DialogContent className="sm:max-w-[400px]">
+        <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Add New Client</DialogTitle>
-            <DialogDescription>Quick add a new client</DialogDescription>
+            <DialogDescription>Quick add a new customer</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-3">
             <div className="space-y-1.5">
@@ -1212,13 +1312,26 @@ export default function InvoiceForm() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="clientAddress" className="text-xs">Address</Label>
-              <Input 
+              <Textarea 
                 id="clientAddress" 
                 value={newClient.address} 
                 onChange={(e) => setNewClient({ ...newClient, address: e.target.value })} 
-                placeholder="Address" 
+                placeholder="Street address&#10;City, State&#10;PIN Code"
+                rows={3}
+                className="resize-y text-sm"
+              />
+              <p className="text-[10px] text-muted-foreground">Multi-line supported - press Enter for new line</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="clientVAT" className="text-xs">VAT / Tax Registration Number</Label>
+              <Input 
+                id="clientVAT" 
+                value={newClient.taxRegistrationNumber} 
+                onChange={(e) => setNewClient({ ...newClient, taxRegistrationNumber: e.target.value })} 
+                placeholder="Enter VAT/Tax number" 
                 className="h-9" 
               />
+              <p className="text-[10px] text-muted-foreground">Optional - Required for VAT reporting on sales</p>
             </div>
           </div>
           <DialogFooter>
@@ -1228,6 +1341,7 @@ export default function InvoiceForm() {
         </DialogContent>
       </Dialog>
 
+      {/* Add Salesman Dialog */}
       <Dialog open={isAddSalesmanOpen} onOpenChange={setIsAddSalesmanOpen}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>

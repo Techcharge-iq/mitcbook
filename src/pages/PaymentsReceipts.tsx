@@ -42,7 +42,7 @@ export default function PaymentsReceipts() {
   const [notes, setNotes] = useState('');
   const [receiptType, setReceiptType] = useState<ReceiptType>('against_bills');
 
-  // ✅ NEW: Bill-wise allocation state
+  // ✅ Bill-wise allocation state
   const [allocations, setAllocations] = useState<PaymentAllocation[]>([]);
   const [unallocatedAmount, setUnallocatedAmount] = useState(0);
 
@@ -93,7 +93,7 @@ export default function PaymentsReceipts() {
     return inv;
   };
 
-  // ✅ NEW: Handle invoice selection for allocation
+  // ✅ Handle invoice selection for allocation
   const toggleInvoiceSelection = (invoiceId: string) => {
     setSelectedInvoiceIds((prev) => {
       if (prev.includes(invoiceId)) {
@@ -104,7 +104,7 @@ export default function PaymentsReceipts() {
     });
   };
 
-  // ✅ NEW: Update allocation amount for an invoice
+  // ✅ Update allocation amount for an invoice
   const updateAllocationAmount = (invoiceId: string, amount: number) => {
     const invoice = getInvoiceDetails(invoiceId);
     if (!invoice) return;
@@ -143,7 +143,7 @@ export default function PaymentsReceipts() {
     });
   };
 
-  // ✅ NEW: Auto-allocate based on selected invoices
+  // ✅ Auto-allocate based on selected invoices
   const autoAllocate = () => {
     if (selectedInvoiceIds.length === 0) {
       toast({ title: 'Error', description: 'Please select at least one invoice', variant: 'destructive' });
@@ -185,14 +185,14 @@ export default function PaymentsReceipts() {
     });
   };
 
-  // ✅ NEW: Reset allocations when party or amount changes
+  // ✅ Reset allocations when party or amount changes
   useEffect(() => {
     setAllocations([]);
     setSelectedInvoiceIds([]);
     setUnallocatedAmount(0);
   }, [partyId, mode]);
 
-  // ✅ NEW: Update unallocated amount when allocations change
+  // ✅ Update unallocated amount when allocations change
   useEffect(() => {
     const totalAllocated = allocations.reduce((sum, a) => sum + a.adjustedAmount, 0);
     setUnallocatedAmount(amountReceived - totalAllocated);
@@ -210,6 +210,7 @@ export default function PaymentsReceipts() {
     setAllocations([]);
     setUnallocatedAmount(0);
     setEditingPaymentId(null);
+    setReceiptType('against_bills');
   };
 
   const loadForEdit = (p: Payment) => {
@@ -281,16 +282,17 @@ export default function PaymentsReceipts() {
 
     // Validate total allocations match amount
     const totalAllocated = allocations.reduce((sum, a) => sum + a.adjustedAmount, 0);
-    if (Math.abs(totalAllocated - amountReceived) > 0.01) {
+    if (Math.abs(totalAllocated - (amountReceived - discount)) > 0.01) {
       toast({ 
         title: 'Error', 
-        description: `Total allocated (${currencySymbol}${totalAllocated.toLocaleString('en-IN')}) does not match amount received (${currencySymbol}${amountReceived.toLocaleString('en-IN')})`,
+        description: `Total allocated (${currencySymbol}${totalAllocated.toLocaleString('en-IN')}) does not match net amount (${currencySymbol}${(amountReceived - discount).toLocaleString('en-IN')})`,
         variant: 'destructive' 
       });
       return;
     }
 
     const now = new Date().toISOString();
+    const receiptNumber = generateReceiptNumber();
 
     if (editingPaymentId) {
       const existing = payments.find((p) => p.id === editingPaymentId);
@@ -298,7 +300,7 @@ export default function PaymentsReceipts() {
 
       const updatedPayment: Payment = {
         ...existing,
-        receiptNumber: existing.receiptNumber || generateReceiptNumber(),
+        receiptNumber: existing.receiptNumber || receiptNumber,
         receiptDate: date,
         clientId: partyId,
         receiptType,
@@ -309,7 +311,7 @@ export default function PaymentsReceipts() {
         unadjustedAmount: unallocatedAmount,
         narration: notes,
         allocations,
-        paymentModeDetails: [{ mode: method, amount: amountReceived }],
+        paymentModeDetails: [{ id: crypto.randomUUID(),mode: method, amount: amountReceived }],
         invoiceId: allocations.length === 1 ? allocations[0].invoiceId : undefined,
         amount: amountReceived,
         date,
@@ -344,11 +346,8 @@ export default function PaymentsReceipts() {
     }
 
     // Create new receipt/payment
-    const receiptNumber = generateReceiptNumber();
-    
     const newPayment: Payment = {
       id: crypto.randomUUID(),
-      company_id: selectedCompanyId,
       receiptNumber,
       receiptDate: date,
       clientId: partyId,
@@ -360,7 +359,7 @@ export default function PaymentsReceipts() {
       unadjustedAmount: unallocatedAmount,
       narration: notes,
       allocations,
-      paymentModeDetails: [{ mode: method, amount: amountReceived }],
+      paymentModeDetails: [{ id: crypto.randomUUID(), mode: method, amount: amountReceived }],
       invoiceId: allocations.length === 1 ? allocations[0].invoiceId : undefined,
       invoiceType: mode === 'receipt' ? 'sales' : 'purchase',
       amount: amountReceived,
@@ -487,7 +486,9 @@ export default function PaymentsReceipts() {
           <div className="space-y-1.5">
             <Label className="text-xs">{mode === 'receipt' ? 'Customer' : 'Vendor'} *</Label>
             <Select value={partyId} onValueChange={(v) => { setPartyId(v); resetForm(); }}>
-              <SelectTrigger className="h-9"><SelectValue placeholder={`Select ${mode === 'receipt' ? 'customer' : 'vendor'}`} /></SelectTrigger>
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder={`Select ${mode === 'receipt' ? 'customer' : 'vendor'}`} />
+              </SelectTrigger>
               <SelectContent>
                 {parties.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
               </SelectContent>
@@ -533,7 +534,7 @@ export default function PaymentsReceipts() {
                               Balance: {currencySymbol}{balance.toLocaleString('en-IN')}
                             </p>
                           </div>
-                          <Badge variant={balance > 0 ? 'destructive' : 'success'} className="text-[9px]">
+                          <Badge variant={balance > 0 ? 'destructive' : 'default'} className="text-[9px]">
                             {currencySymbol}{balance.toLocaleString('en-IN')}
                           </Badge>
                         </label>
@@ -699,7 +700,11 @@ export default function PaymentsReceipts() {
 
       {/* Save Button */}
       {selectedInvoiceIds.length > 0 && allocations.length > 0 && (
-        <Button onClick={handleSave} className="w-full h-10" disabled={unallocatedAmount > 0.01}>
+        <Button 
+          onClick={handleSave} 
+          className="w-full h-10" 
+          disabled={unallocatedAmount > 0.01}
+        >
           <Save className="mr-1.5 h-4 w-4" />
           {editingPaymentId
             ? 'Update'
@@ -769,7 +774,9 @@ export default function PaymentsReceipts() {
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(p)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+                          <AlertDialogAction onClick={() => handleDelete(p)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Delete
+                          </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>

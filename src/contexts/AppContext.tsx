@@ -63,7 +63,7 @@ interface AppContextType {
   getPurchaseInvoice: (id: string) => PurchaseInvoice | undefined;
   generatePurchaseInvoiceNumber: () => string;
   
-  // ✅ UPDATED: Payment operations with allocation support
+  // Payments
   payments: Payment[];
   addPayment: (payment: Payment) => void;
   updatePayment: (payment: Payment) => void;
@@ -415,135 +415,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return candidate;
   };
 
-  // ✅ NEW: Create receipt with bill-wise allocation
-  const createReceipt = (receipt: ReceiptDTO): Payment => {
-    // 1. Validate total allocations match net amount
-    const totalAllocated = receipt.allocations.reduce((sum, a) => sum + a.adjustedAmount, 0);
-    if (Math.abs(totalAllocated - receipt.netAmount) > 0.001) {
-      throw new Error(`Total allocated (${totalAllocated}) does not match net amount (${receipt.netAmount})`);
-    }
-
-    // 2. Create payment record
-    const payment: Payment = {
-      id: crypto.randomUUID(),
-      company_id: selectedCompanyId,
-      receiptNumber: receipt.receiptNumber,
-      receiptDate: receipt.receiptDate,
-      clientId: receipt.clientId,
-      receiptType: receipt.receiptType,
-      paymentMode: receipt.paymentMode,
-      amountReceived: receipt.amountReceived,
-      discount: receipt.discount,
-      netAmount: receipt.netAmount,
-      unadjustedAmount: receipt.unadjustedAmount,
-      narration: receipt.narration,
-      allocations: receipt.allocations,
-      paymentModeDetails: receipt.paymentModeDetails,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      // Legacy fields for backward compatibility
-      invoiceId: receipt.allocations.length === 1 ? receipt.allocations[0].invoiceId : undefined,
-      invoiceType: 'sales',
-      amount: receipt.netAmount,
-      date: receipt.receiptDate,
-      method: receipt.paymentMode,
-      notes: receipt.narration,
-    };
-
-    // 3. Save payment
-    setPayments((prev) => [...prev, payment]);
-
-    // 4. Save allocations
-    const allocationsWithId = receipt.allocations.map((a) => ({
-      ...a,
-      id: crypto.randomUUID(),
-    }));
-    setPaymentAllocations((prev) => [...prev, ...allocationsWithId]);
-
-    // 5. Save payment mode details
-    const modeDetailsWithId = receipt.paymentModeDetails.map((m) => ({
-      ...m,
-      id: crypto.randomUUID(),
-    }));
-    setPaymentModeDetails((prev) => [...prev, ...modeDetailsWithId]);
-
-    // 6. Update invoice statuses and outstanding amounts
-    for (const allocation of receipt.allocations) {
-      const invoice = invoices.find((i) => i.id === allocation.invoiceId);
-      if (invoice) {
-        const totalPaid = getAllPaymentsForInvoice(allocation.invoiceId) + allocation.adjustedAmount;
-        const newStatus: InvoiceStatus = 
-          totalPaid >= invoice.netTotal ? 'paid' : 
-          totalPaid > 0 ? 'partial' : 'sent';
-        
-        // Update invoice status
-        setInvoices((prev) => prev.map((i) => 
-          i.id === invoice.id ? { 
-            ...i, 
-            status: newStatus,
-            updatedAt: new Date().toISOString()
-          } : i
-        ));
-      }
-    }
-
-    // 7. Create journal entry
-    createPaymentJournalEntry(payment);
-
-    // 8. Add audit entry
-    addAuditEntry({
-      type: 'payment',
-      action: 'created',
-      target: payment.receiptNumber,
-      details: `Receipt created for ${receipt.allocations.length} bill(s)`,
-      value: payment.netAmount,
-    });
-
-    return payment;
-  };
-
-  // ✅ NEW: Helper to get all payments for an invoice
+  // ✅ NEW: Get all payments for an invoice
   const getAllPaymentsForInvoice = (invoiceId: string): number => {
     return payments
       .filter((p) => p.allocations?.some((a) => a.invoiceId === invoiceId))
       .reduce((sum, p) => sum + p.allocations?.reduce((s, a) => s + a.adjustedAmount, 0) || 0, 0);
   };
 
-  // ✅ NEW: Create journal entry for payment
-  const createPaymentJournalEntry = (payment: Payment) => {
-    const accountId = payment.paymentMode === 'cash' ? 'acc-1000' : 'acc-1010';
-    const lines: JournalLine[] = [
-      { accountId, debit: payment.netAmount, credit: 0 },
-      { accountId: 'acc-1100', debit: 0, credit: payment.netAmount },
-    ];
-
-    // Add discount line if applicable
-    if (payment.discount > 0) {
-      lines.push({ accountId: 'acc-5000', debit: payment.discount, credit: 0 });
-      lines[1] = { accountId: 'acc-1100', debit: 0, credit: payment.netAmount + payment.discount };
-    }
-
-    const entry: JournalEntry = {
-      id: crypto.randomUUID(),
-      company_id: selectedCompanyId,
-      date: payment.receiptDate,
-      reference: payment.receiptNumber,
-      referenceType: 'receipt',
-      referenceId: payment.id,
-      description: `Receipt ${payment.receiptNumber} from ${payment.clientId}`,
-      lines,
-      createdAt: new Date().toISOString(),
-      idempotencyKey: `receipt:${payment.id}`,
-    };
-
-    createJournalEntry(entry);
-  };
-
   // ✅ NEW: Get allocations by payment
   const getAllocationsByPayment = (paymentId: string): PaymentAllocation[] => {
-    return paymentAllocations.filter((a) => 
-      payments.find((p) => p.id === paymentId)?.allocations?.some((pa) => pa.id === a.id)
-    );
+    const payment = payments.find((p) => p.id === paymentId);
+    return payment?.allocations || [];
   };
 
   // ✅ NEW: Get outstanding invoices for a client
@@ -641,6 +523,127 @@ export function AppProvider({ children }: { children: ReactNode }) {
         outstandingAfter: a.outstandingAfter,
       })),
     };
+  };
+
+  // ✅ NEW: Create receipt with bill-wise allocation
+  const createReceipt = (receipt: ReceiptDTO): Payment => {
+    // 1. Validate total allocations match net amount
+    const totalAllocated = receipt.allocations.reduce((sum, a) => sum + a.adjustedAmount, 0);
+    if (Math.abs(totalAllocated - receipt.netAmount) > 0.001) {
+      throw new Error(`Total allocated (${totalAllocated}) does not match net amount (${receipt.netAmount})`);
+    }
+
+    // 2. Create payment record
+    const payment: Payment = {
+    id: crypto.randomUUID(),
+    company_id: selectedCompanyId,
+    // ✅ REQUIRED FIELDS
+    receiptNumber: receipt.receiptNumber || generateReceiptNumber(),
+    receiptDate: receipt.receiptDate || new Date().toISOString().split('T')[0],
+    clientId: receipt.clientId,  // ← REQUIRED
+    receiptType: receipt.receiptType || 'against_bills',
+    paymentMode: receipt.paymentMode || 'bank',  // ← REQUIRED
+    updatedAt: new Date().toISOString(),  // ← REQUIRED
+    
+    // Amounts
+    amountReceived: receipt.amountReceived || 0,
+    discount: receipt.discount || 0,
+    netAmount: receipt.netAmount || 0,
+    unadjustedAmount: receipt.unadjustedAmount || 0,
+    
+    // Details
+    narration: receipt.narration || '',
+    allocations: receipt.allocations || [],
+    paymentModeDetails: receipt.paymentModeDetails.map(m => ({
+      ...m,
+      id: m.id || crypto.randomUUID(),  // ✅ Ensure id exists
+    })),
+    
+    // Legacy fields
+    invoiceId: receipt.allocations.length === 1 ? receipt.allocations[0].invoiceId : undefined,
+    invoiceType: 'sales',
+    amount: receipt.netAmount || 0,
+    date: receipt.receiptDate || new Date().toISOString().split('T')[0],
+    method: receipt.paymentMode || 'bank',
+    reference: receipt.receiptNumber || '',
+    notes: receipt.narration || '',
+    
+    createdAt: new Date().toISOString(),
+  };
+
+    // 3. Save payment
+    setPayments((prev) => [...prev, payment]);
+
+    // 4. Save allocations
+    const allocationsWithId = receipt.allocations.map((a) => ({
+      ...a,
+      id: a.id || crypto.randomUUID(),
+    }));
+    setPaymentAllocations((prev) => [...prev, ...allocationsWithId]);
+
+    // 5. Save payment mode details
+    const modeDetailsWithId = receipt.paymentModeDetails.map((m) => ({
+      ...m,
+      id: m.id || crypto.randomUUID(),
+    }));
+    setPaymentModeDetails((prev) => [...prev, ...modeDetailsWithId]);
+
+    // 6. Update invoice statuses
+    for (const allocation of receipt.allocations) {
+      const invoice = invoices.find((i) => i.id === allocation.invoiceId);
+      if (invoice) {
+        const totalPaid = getAllPaymentsForInvoice(allocation.invoiceId) + allocation.adjustedAmount;
+        const newStatus: InvoiceStatus = 
+          totalPaid >= invoice.netTotal ? 'paid' : 
+          totalPaid > 0 ? 'partial' : 'sent';
+        
+        setInvoices((prev) => prev.map((i) => 
+          i.id === invoice.id ? { 
+            ...i, 
+            status: newStatus,
+            updatedAt: new Date().toISOString()
+          } : i
+        ));
+      }
+    }
+
+    // 7. Create journal entry
+    const paymentAccountId = receipt.paymentMode === 'cash' ? 'acc-1000' : 'acc-1010';
+    const lines: JournalLine[] = [
+      { accountId: paymentAccountId, debit: receipt.netAmount, credit: 0 },
+      { accountId: 'acc-1100', debit: 0, credit: receipt.netAmount },
+    ];
+
+    if (receipt.discount > 0) {
+      lines.push({ accountId: 'acc-5000', debit: receipt.discount, credit: 0 });
+      lines[1] = { accountId: 'acc-1100', debit: 0, credit: receipt.netAmount + receipt.discount };
+    }
+
+    const entry: JournalEntry = {
+      id: crypto.randomUUID(),
+      company_id: selectedCompanyId,
+      date: receipt.receiptDate || new Date().toISOString().split('T')[0],
+      reference: payment.receiptNumber,
+      referenceType: 'receipt',
+      referenceId: payment.id,
+      description: `Receipt ${payment.receiptNumber} from ${receipt.clientId}`,
+      lines,
+      createdAt: new Date().toISOString(),
+      idempotencyKey: `receipt:${payment.id}`,
+    };
+
+    createJournalEntry(entry);
+
+    // 8. Add audit entry
+    addAuditEntry({
+      type: 'payment',
+      action: 'created',
+      target: payment.receiptNumber,
+      details: `Receipt created for ${receipt.allocations.length} bill(s)`,
+      value: payment.netAmount,
+    });
+
+    return payment;
   };
 
   // ✅ UPDATED: Client operations with company_id
@@ -876,7 +879,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
   const getPurchaseInvoice = (id: string) => purchaseInvoices.find((p) => p.id === id);
 
-  // ✅ UPDATED: Payment operations with company_id (legacy)
+  // ✅ UPDATED: Payment operations with company_id
   const addPayment = (payment: Payment) => {
     const paymentWithCompany = {
       ...payment,
@@ -1659,6 +1662,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           reference: p.reference,
           notes: p.notes,
           createdAt: p.created_at,
+      // ✅ REQUIRED FIELDS
+          clientId: p.client_id || '',  // ← ADD THIS
+          paymentMode: p.payment_mode || 'bank',  // ← ADD THIS
+          updatedAt: p.updated_at || new Date().toISOString(),  // ← ADD THIS
           receiptNumber: p.receipt_number || '',
           receiptDate: p.receipt_date || p.date,
           receiptType: p.receipt_type || 'against_bills',
