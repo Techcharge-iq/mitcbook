@@ -42,19 +42,19 @@ export type ItemKind = 'goods' | 'services';
 
 export interface Item {
   id: string;
-  company_id?: string;
-  kind?: ItemKind;
-  code?: string;
-  category?: string;
+  companyId: string; // Required
+  kind: ItemKind;
+  code: string;
+  category: string;
   name: string;
-  description?: string;
-  unit?: string;
+  description: string;
+  unit: string;
   rate: number;
-  cost?: number;
+  cost: number;
   stock: number;
-  reorderLevel?: number;
-  minStock?: number;
-  active?: boolean;
+  minStock: number;
+  reorderLevel: number;
+  active: boolean;
   vatApplicable: boolean;
   vatPercentage: number;
   createdAt: string;
@@ -425,6 +425,8 @@ export interface Salesman {
   phone?: string;
   createdAt: string;
 }
+
+
 
 // Business settings
 export interface BusinessSettings {

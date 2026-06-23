@@ -1,4 +1,4 @@
-import React, { createContext, useContext, ReactNode, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, ReactNode, useEffect, useState, useMemo } from 'react';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useRemoteCollection } from '@/hooks/useRemoteCollection';
 import type { 
@@ -95,6 +95,7 @@ interface AppContextType {
 
   // Items
   items: Item[];
+
   // Salesmen
   salesmen: Salesman[];
   addSalesman: (s: Salesman) => void;
@@ -152,6 +153,8 @@ interface AppContextType {
   generateQuotationNumber: () => string;
   generateInvoiceNumber: () => string;
   generateReceiptNumber: () => string;
+  currentCompany: Company | null;
+  setCurrentCompany: (company: Company) => void;
 }
 
 const defaultSettings: BusinessSettings = {
@@ -159,8 +162,8 @@ const defaultSettings: BusinessSettings = {
   email: '',
   phone: '',
   address: '',
-  currency: 'INR',
-  theme: 'system',
+  currency: 'OMR',
+  theme: 'system',  
   vatEnabled: true,
   allowManualInvoiceNumberEntry: false,
   defaultVatPercentage: 5,
@@ -173,6 +176,16 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [companies, setCompanies] = useLocalStorage<Company[]>('app_companies', [{ id: 'default', name: 'Default Company' }]);
   const [selectedCompanyId, setSelectedCompanyId] = useLocalStorage<string>('app_selected_company_id', 'default');
+
+  // Get current company
+  const currentCompany = useMemo(() => {
+    return companies.find(c => c.id === selectedCompanyId) || companies[0] || null;
+  }, [companies, selectedCompanyId]);
+
+  // Set current company
+  const setCurrentCompany = (company: Company) => {
+    setSelectedCompanyId(company.id);
+  };
 
   const companyKey = (key: string) => `app_${key}_${selectedCompanyId}`;
 
@@ -1737,6 +1750,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         syncToDatabase, syncFromDatabase, forceSync, isElectron,
         auditLog, addAuditEntry, getRecentAuditLog,
         generateQuotationNumber, generateInvoiceNumber, generateReceiptNumber,
+        currentCompany, setCurrentCompany,
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }), [
         companies, selectedCompanyId,
@@ -1744,6 +1758,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         payments, paymentAllocations, paymentModeDetails,
         accounts, journalEntries, accountBalances,
         vouchers, items, salesmen, settings, auditLog, isElectron,
+        currentCompany,
       ])}
     >
       {children}

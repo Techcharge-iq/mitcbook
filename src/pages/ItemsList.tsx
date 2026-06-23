@@ -1,6 +1,7 @@
+// pages/ItemsList.tsx
 import { useState, useMemo } from 'react';
 import { useApp } from '@/contexts/AppContext';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,7 +18,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Pencil, Trash2, Package, Wrench, Search } from 'lucide-react';
+import { Plus, Pencil, Trash2, Package, Wrench, Search, Building2 } from 'lucide-react';
 import type { Item, ItemKind } from '@/types';
 import { currencySymbols } from '@/types';
 import {
@@ -33,7 +34,7 @@ import {
 const GOODS_UNITS = ['PCS', 'KG', 'BOX', 'LTR', 'MTR', 'SET', 'BAG', 'CTN'];
 const SERVICE_UNITS = ['Job', 'Hour', 'Visit', 'Service', 'Day', 'Month'];
 
-const emptyItem = (kind: ItemKind, defaultVat: number, vatEnabled: boolean): Item => ({
+const emptyItem = (kind: ItemKind, defaultVat: number, vatEnabled: boolean, companyId: string): Item => ({
   id: '',
   kind,
   code: '',
@@ -50,10 +51,22 @@ const emptyItem = (kind: ItemKind, defaultVat: number, vatEnabled: boolean): Ite
   vatApplicable: vatEnabled,
   vatPercentage: defaultVat,
   createdAt: new Date().toISOString(),
+  companyId: companyId,
 });
 
 export default function ItemsList() {
-  const { items, addItem, updateItem, deleteItem, settings, invoices, purchaseInvoices } = useApp();
+  const { 
+    items, 
+    addItem, 
+    updateItem, 
+    deleteItem, 
+    settings, 
+    invoices, 
+    purchaseInvoices,
+    currentCompany,
+    companies,
+    setCurrentCompany
+  } = useApp();
   const { toast } = useToast();
   const currencySymbol = currencySymbols[settings.currency];
   const defaultVat = settings.defaultVatPercentage ?? 5;
@@ -64,11 +77,17 @@ export default function ItemsList() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
-  const [form, setForm] = useState<Item>(emptyItem('goods', defaultVat, vatEnabled));
+  const [form, setForm] = useState<Item>(emptyItem('goods', defaultVat, vatEnabled, currentCompany?.id || ''));
   const [detailItem, setDetailItem] = useState<Item | null>(null);
 
-  const goods = useMemo(() => items.filter((i) => getItemKind(i) === 'goods'), [items]);
-  const services = useMemo(() => items.filter((i) => getItemKind(i) === 'services'), [items]);
+  // Filter items by current company
+  const companyItems = useMemo(() => {
+    if (!currentCompany) return [];
+    return items.filter(item => item.companyId === currentCompany.id);
+  }, [items, currentCompany]);
+
+  const goods = useMemo(() => companyItems.filter((i) => getItemKind(i) === 'goods'), [companyItems]);
+  const services = useMemo(() => companyItems.filter((i) => getItemKind(i) === 'services'), [companyItems]);
 
   const filterList = (list: Item[]) => {
     const q = search.trim().toLowerCase();
@@ -85,8 +104,12 @@ export default function ItemsList() {
   };
 
   const openNew = () => {
-    const fresh = emptyItem(tab, defaultVat, vatEnabled);
-    fresh.code = generateCode(tab, items);
+    if (!currentCompany) {
+      toast({ title: 'No Company Selected', description: 'Please select a company first', variant: 'destructive' });
+      return;
+    }
+    const fresh = emptyItem(tab, defaultVat, vatEnabled, currentCompany.id);
+    fresh.code = generateCode(tab, companyItems);
     setEditing(null);
     setForm(fresh);
     setEditorOpen(true);
@@ -94,7 +117,7 @@ export default function ItemsList() {
 
   const openEdit = (item: Item) => {
     setEditing(item);
-    setForm({ ...emptyItem(getItemKind(item), defaultVat, vatEnabled), ...item });
+    setForm({ ...emptyItem(getItemKind(item), defaultVat, vatEnabled, currentCompany?.id || ''), ...item });
     setEditorOpen(true);
   };
 
@@ -103,8 +126,18 @@ export default function ItemsList() {
       toast({ title: 'Name required', variant: 'destructive' });
       return;
     }
-    const code = form.code?.trim() || generateCode(getItemKind(form), items);
-    const payload: Item = { ...form, code };
+    if (!currentCompany) {
+      toast({ title: 'No Company Selected', variant: 'destructive' });
+      return;
+    }
+    
+    const code = form.code?.trim() || generateCode(getItemKind(form), companyItems);
+    const payload: Item = { 
+      ...form, 
+      code, 
+      companyId: currentCompany.id
+    };
+    
     if (editing) {
       updateItem({ ...payload, id: editing.id });
       toast({ title: 'Item updated', description: form.name });
@@ -121,12 +154,43 @@ export default function ItemsList() {
     toast({ title: 'Deleted', variant: 'destructive' });
   };
 
+  // Show company selection prompt if no company
+  if (!currentCompany) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 space-y-4">
+        <Building2 className="h-16 w-16 text-muted-foreground" />
+        <h2 className="text-xl font-semibold">No Company Selected</h2>
+        <p className="text-sm text-muted-foreground">Please select a company from the dropdown above to manage items.</p>
+        {companies.length > 0 && (
+          <Select onValueChange={(value) => {
+            const company = companies.find(c => c.id === value);
+            if (company) setCurrentCompany(company);
+          }}>
+            <SelectTrigger className="w-64">
+              <SelectValue placeholder="Select a company" />
+            </SelectTrigger>
+            <SelectContent>
+              {companies.map((company) => (
+                <SelectItem key={company.id} value={company.id}>
+                  {company.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3 pb-20 lg:pb-4">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
           <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
             <Package className="h-5 w-5 text-primary" /> Items Management
+            <Badge variant="outline" className="ml-2 text-xs">
+              {currentCompany.name}
+            </Badge>
           </h1>
           <p className="text-xs text-muted-foreground">Goods & Services master with stock tracking</p>
         </div>
@@ -195,7 +259,7 @@ export default function ItemsList() {
         </Card>
       </Tabs>
 
-      {/* Editor */}
+      {/* Editor Dialog */}
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
         <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -203,6 +267,8 @@ export default function ItemsList() {
               {editing ? 'Edit' : 'New'} {getItemKind(form) === 'goods' ? 'Goods' : 'Service'}
             </DialogTitle>
             <DialogDescription>
+              {currentCompany && `Company: ${currentCompany.name}`}
+              <br />
               {getItemKind(form) === 'goods'
                 ? 'Inventory-tracked product'
                 : 'Non-inventory service item'}
@@ -458,6 +524,11 @@ function DetailPanel({ item, currencySymbol, invoices, purchases, onEdit }: {
         </SheetTitle>
         <SheetDescription>
           {item.code || '—'} · {item.unit || '—'} · {isItemActive(item) ? 'Active' : 'Inactive'}
+          {item.companyId && (
+            <span className="block text-[10px] text-muted-foreground mt-1">
+              Company ID: {item.companyId}
+            </span>
+          )}
         </SheetDescription>
       </SheetHeader>
 

@@ -4,6 +4,8 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useTheme } from 'next-themes';
 import { useAuth } from '@/hooks/useAuth';
+import { useApp } from '@/contexts/AppContext';
+import { CompanySwitcher } from '@/components/CompanySwitcher';
 import {
   LayoutDashboard,
   FileText,
@@ -31,12 +33,13 @@ interface AppLayoutProps {
 
 const navItems = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { name: 'Parties', href: '/clients', icon: Users },
+  { name: 'Items', href: '/items', icon: BookOpen },
   { name: 'Quotations', href: '/quotations', icon: FileText },
   { name: 'Sales', href: '/invoices', icon: Receipt },
   { name: 'Projects', href: '/projects', icon: Building2 },
   { name: 'Purchases', href: '/purchases', icon: ShoppingCart },
   { name: 'Vouchers', href: '/vouchers', icon: Wallet },
-  { name: 'Parties', href: '/clients', icon: Users },
   { name: 'Accounts', href: '/accounts', icon: BookOpen },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
@@ -46,6 +49,8 @@ const reportSubmenuItems = [
   { name: 'Balance Sheet', href: '/reports/balance-sheet', icon: BarChart3 },
   { name: 'Trial Balance', href: '/reports/trial-balance', icon: BarChart3 },
   { name: 'Aging Report', href: '/reports/aging', icon: BarChart3 },
+  { name: 'Item Report', href: '/reports/items', icon: BarChart3 },
+  { name: 'VAT Return', href: '/reports/vat', icon: BarChart3 },
 ];
 
 export function AppLayout({ children }: AppLayoutProps) {
@@ -56,6 +61,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const { user, role, signOut } = useAuth();
+  const { currentCompany } = useApp();
   const isAuthRoute = location.pathname === '/auth';
 
   // ✅ ALL useEffect hooks before any conditional return
@@ -101,10 +107,21 @@ export function AppLayout({ children }: AppLayoutProps) {
             </div>
           </Link>
 
+           {/* Company Switcher in Sidebar */}
+          <div className="mb-4">
+            <CompanySwitcher />
+          </div>
+
           <div className="space-y-5">
             <div className="rounded-3xl border border-border/70 bg-white/85 p-4 shadow-sm shadow-black/5 ring-1 ring-black/5 backdrop-blur-xl dark:bg-slate-950/75 dark:ring-white/10">
               <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">Workspace</p>
               <p className="mt-2 text-sm font-semibold text-foreground">Modern business operations and financial intelligence.</p>
+              {currentCompany && (
+                <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                  <Building2 className="h-3 w-3" />
+                  <span>Active: {currentCompany.name}</span>
+                </div>
+              )}
             </div>
 
             <nav className="space-y-2">
@@ -197,6 +214,11 @@ export function AppLayout({ children }: AppLayoutProps) {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                {/* Mobile Company Switcher */}
+                <div className="lg:hidden">
+                  <CompanySwitcher />
+                </div>
+                
                 <SyncStatusIndicator />
                 {user ? (
                   <>
@@ -244,6 +266,10 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <button type="button" onClick={() => setSidebarOpen(false)} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-border/70 bg-card text-foreground">
                     <X className="h-5 w-5" />
                   </button>
+                </div>
+                {/* Mobile Company Switcher in Sidebar */}
+                <div className="mb-4">
+                  <CompanySwitcher />
                 </div>
                 <nav className="space-y-2">
                   {navItems.map((item) => (

@@ -1,3 +1,4 @@
+// src/App.tsx
 import { useEffect, lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -12,6 +13,8 @@ import { useToast } from "@/hooks/use-toast";
 
 import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
+// REMOVE THIS DUPLICATE IMPORT - Line 15
+// import ItemsList from '@/pages/ItemsList';
 
 const QuotationsList = lazy(() => import("@/pages/QuotationsList"));
 const QuotationForm = lazy(() => import("@/pages/QuotationForm"));
@@ -31,7 +34,7 @@ const ContraVoucher = lazy(() => import("./pages/ContraVoucher"));
 const LoanGivenVoucher = lazy(() => import("./pages/LoanGivenVoucher"));
 const LoanReceivedVoucher = lazy(() => import("./pages/LoanReceivedVoucher"));
 const JournalVoucher = lazy(() => import("./pages/JournalVoucher"));
-const ItemsList = lazy(() => import("./pages/ItemsList"));
+const ItemsList = lazy(() => import("./pages/ItemsList")); // KEEP THIS ONE
 const ItemReport = lazy(() => import("./pages/reports/ItemReport"));
 const VatReturn = lazy(() => import("./pages/reports/VatReturn"));
 const ChartOfAccounts = lazy(() => import("./pages/ChartOfAccounts"));
