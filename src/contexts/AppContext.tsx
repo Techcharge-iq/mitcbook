@@ -165,7 +165,7 @@ const defaultSettings: BusinessSettings = {
   currency: 'OMR',
   theme: 'system',  
   vatEnabled: true,
-  allowManualInvoiceNumberEntry: false,
+  allowManualInvoiceNumberEntry: true,
   defaultVatPercentage: 5,
   bankName: '',
   bankAccountNumber: '',
