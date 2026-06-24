@@ -598,29 +598,6 @@ export default function InvoiceForm() {
         </CardContent>
       </Card>
 
-      {/* ✅ Invoice Preview */}
-      {isEditing && existingInvoice && (
-        <Card>
-          <CardHeader className="py-2.5 px-3">
-            <CardTitle className="text-sm flex items-center justify-between">
-              <span>Invoice Preview</span>
-              <span className="text-xs font-normal text-muted-foreground">
-                {showDateColumn ? '📅 Showing Date column' : '🔢 Showing S.No column'}
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-3 pb-3">
-            <InvoicePrint
-              invoice={existingInvoice}
-              client={getClient(clientId)}
-              settings={settings}
-              showDateColumn={showDateColumn}
-              payments={getPaymentsByInvoice(existingInvoice.id)}
-            />
-          </CardContent>
-        </Card>
-      )}
-
       {/* Client & Details */}
       <Card>
         <CardHeader className="py-2.5 px-3"><CardTitle className="text-sm">Client & Details</CardTitle></CardHeader>
