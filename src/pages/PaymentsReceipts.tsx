@@ -18,7 +18,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { currencySymbols, type Payment, type PaymentMethod, type PaymentAllocation, type ReceiptType } from '@/types';
-import { ArrowDownLeft, ArrowUpRight, Save, Edit, Trash2, X, Plus, Calculator, Receipt as ReceiptIcon } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Save, Edit, Trash2, X, Plus, Calculator, Receipt as ReceiptIcon, RefreshCw } from 'lucide-react';
 
 export default function PaymentsReceipts() {
   const { toast } = useToast();
@@ -51,6 +51,13 @@ export default function PaymentsReceipts() {
     if (mode === 'receipt') return clients.filter((c) => c.type === 'customer' || c.type === 'both');
     return clients.filter((c) => c.type === 'vendor' || c.type === 'both');
   }, [clients, mode]);
+    // ✅ DEBUG: Log clients when they load
+    useEffect(() => {
+    console.log('📊 [PaymentsReceipts] Clients loaded:', clients.length);
+    console.log('📊 [PaymentsReceipts] Clients:', clients);
+    console.log('📊 [PaymentsReceipts] Customers filtered:', parties);
+}, [clients, parties]);
+
 
   // Get outstanding invoices for selected party
   const outstandingInvoices = useMemo(() => {

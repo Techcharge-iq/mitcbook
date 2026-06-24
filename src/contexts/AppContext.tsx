@@ -261,7 +261,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // ✅ UPDATED: Pass companyId to all useRemoteCollection calls
-  const [clients, setClients] = useRemoteCollection<Client>('clients', companyKey('clients'), [], selectedCompanyId);
+  const [clients, setClients] = useRemoteCollection<Client>(
+  'clients', 
+  companyKey('clients'), 
+  [], 
+  selectedCompanyId
+);
   const [quotations, setQuotations] = useRemoteCollection<Quotation>('quotations', companyKey('quotations'), [], selectedCompanyId);
   const [invoices, setInvoices] = useRemoteCollection<Invoice>('invoices', companyKey('invoices'), [], selectedCompanyId);
   const [projects, setProjects] = useRemoteCollection<Project>('projects', companyKey('projects'), [], selectedCompanyId);
