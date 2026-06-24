@@ -1272,6 +1272,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addItem = (item: Item) => {
     const itemWithCompany = {
       ...item,
+      companyId: selectedCompanyId,
       company_id: selectedCompanyId,
     };
     setItems((prev) => [...prev, itemWithCompany]);
@@ -1280,6 +1281,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addSalesman = (s: Salesman) => {
     const salesmanWithCompany = {
       ...s,
+      companyId: selectedCompanyId,
       company_id: selectedCompanyId,
     };
     setSalesmen((prev) => [...prev, salesmanWithCompany]);
@@ -1290,6 +1292,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateItem = (item: Item) => {
     const itemWithCompany = {
       ...item,
+      companyId: selectedCompanyId,
       company_id: selectedCompanyId,
     };
     setItems((prev) => prev.map((i) => (i.id === item.id ? itemWithCompany : i)));

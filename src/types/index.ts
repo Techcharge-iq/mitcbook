@@ -43,6 +43,7 @@ export type ItemKind = 'goods' | 'services';
 export interface Item {
   id: string;
   companyId: string; // Required
+  company_id?: string;
   kind: ItemKind;
   code: string;
   category: string;

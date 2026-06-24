@@ -83,7 +83,7 @@ export default function ItemsList() {
   // Filter items by current company
   const companyItems = useMemo(() => {
     if (!currentCompany) return [];
-    return items.filter(item => item.companyId === currentCompany.id);
+    return items.filter(item => item.companyId === currentCompany.id || (item as any).company_id === currentCompany.id);
   }, [items, currentCompany]);
 
   const goods = useMemo(() => companyItems.filter((i) => getItemKind(i) === 'goods'), [companyItems]);

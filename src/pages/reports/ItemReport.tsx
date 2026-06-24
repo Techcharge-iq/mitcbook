@@ -39,8 +39,28 @@ interface DrillRow {
 
 export default function ItemReport() {
   const navigate = useNavigate();
-  const { items, invoices, purchaseInvoices, quotations, settings } = useApp();
+  const { items, invoices, purchaseInvoices, quotations, settings, currentCompany } = useApp();
   const currencySymbol = currencySymbols[settings.currency];
+
+  const companyItems = useMemo(() => {
+    if (!currentCompany) return [];
+    return items.filter((item) => item.companyId === currentCompany.id || (item as any).company_id === currentCompany.id);
+  }, [items, currentCompany]);
+
+  const companyInvoices = useMemo(() => {
+    if (!currentCompany) return [];
+    return invoices.filter((invoice) => invoice.company_id === currentCompany.id);
+  }, [invoices, currentCompany]);
+
+  const companyPurchaseInvoices = useMemo(() => {
+    if (!currentCompany) return [];
+    return purchaseInvoices.filter((purchase) => purchase.company_id === currentCompany.id);
+  }, [purchaseInvoices, currentCompany]);
+
+  const companyQuotations = useMemo(() => {
+    if (!currentCompany) return [];
+    return quotations.filter((quotation) => quotation.company_id === currentCompany.id);
+  }, [quotations, currentCompany]);
 
   const today = new Date().toISOString().split('T')[0];
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
@@ -54,12 +74,12 @@ export default function ItemReport() {
   };
 
   const rows: ItemRow[] = useMemo(() => {
-    return items.map((item) => {
+    return companyItems.map((item) => {
       let purchasedQty = 0, soldQty = 0;
       let salesValue = 0, purchaseValue = 0;
       let vatCollected = 0, vatPaid = 0;
 
-      invoices.forEach((inv) => {
+      companyInvoices.forEach((inv) => {
         if (!inRange(inv.createdAt)) return;
         inv.items.forEach((li) => {
           if (li.itemId === item.id) {
@@ -69,7 +89,7 @@ export default function ItemReport() {
           }
         });
       });
-      purchaseInvoices.forEach((pi) => {
+      companyPurchaseInvoices.forEach((pi) => {
         if (!inRange(pi.createdAt)) return;
         pi.items.forEach((li) => {
           if (li.itemId === item.id) {
@@ -100,14 +120,14 @@ export default function ItemReport() {
   const drillRows: DrillRow[] = useMemo(() => {
     if (!drillItem) return [];
     const out: DrillRow[] = [];
-    quotations.forEach((q) => {
+    companyQuotations.forEach((q) => {
       q.items.forEach((li) => {
         if (li.itemId === drillItem.itemId) {
           out.push({ date: q.createdAt.split('T')[0], doc: q.number, type: 'quotation', qty: li.quantity, rate: li.rate, total: li.total, vat: li.vatAmount ?? 0 });
         }
       });
     });
-    invoices.forEach((inv) => {
+    companyInvoices.forEach((inv) => {
       if (!inRange(inv.createdAt)) return;
       inv.items.forEach((li) => {
         if (li.itemId === drillItem.itemId) {
@@ -115,7 +135,7 @@ export default function ItemReport() {
         }
       });
     });
-    purchaseInvoices.forEach((pi) => {
+    companyPurchaseInvoices.forEach((pi) => {
       if (!inRange(pi.createdAt)) return;
       pi.items.forEach((li) => {
         if (li.itemId === drillItem.itemId) {
@@ -124,7 +144,7 @@ export default function ItemReport() {
       });
     });
     return out.sort((a, b) => b.date.localeCompare(a.date));
-  }, [drillItem, invoices, purchaseInvoices, quotations, from, to]);
+  }, [drillItem, companyInvoices, companyPurchaseInvoices, companyQuotations, from, to]);
 
   const exportCSV = () => {
     const header = ['Item', 'Unit', 'Opening', 'Purchased', 'Sold', 'Closing', 'Sales Value', 'Purchase Value', 'VAT Collected', 'VAT Paid'];

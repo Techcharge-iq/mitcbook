@@ -28,7 +28,7 @@ interface Props {
 }
 
 export function ItemPicker({ value, fallbackName, onSelect, className }: Props) {
-  const { items, addItem, settings } = useApp();
+  const { items, addItem, settings, currentCompany } = useApp();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [creatorOpen, setCreatorOpen] = useState(false);
@@ -41,11 +41,15 @@ export function ItemPicker({ value, fallbackName, onSelect, className }: Props) 
     vatApplicable: vatEnabled, vatPercentage: defaultVat,
   });
 
-  const visibleItems = useMemo(() => items.filter(isItemActive), [items]);
+  const visibleItems = useMemo(() => {
+    if (!currentCompany) return [];
+    return items
+      .filter((item) => isItemActive(item) && (item.companyId === currentCompany.id || (item as any).company_id === currentCompany.id));
+  }, [items, currentCompany]);
   const goods = visibleItems.filter((i) => getItemKind(i) === 'goods');
   const services = visibleItems.filter((i) => getItemKind(i) === 'services');
 
-  const selected = items.find((i) => i.id === value);
+  const selected = items.find((i) => i.id === value && (i.companyId === currentCompany?.id || (i as any).company_id === currentCompany?.id));
   const label = selected?.name || fallbackName || 'Select item...';
 
   const handleCreate = () => {

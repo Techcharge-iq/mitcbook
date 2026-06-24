@@ -216,6 +216,7 @@ const COLLECTIONS: Record<
   items: {
     table: 'items',
     cols: baseCols({
+      companyId: 'company_id',
       name: 'name',
       description: 'description',
       unit: 'unit',

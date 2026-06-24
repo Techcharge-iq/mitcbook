@@ -58,9 +58,10 @@ export function useRemoteCollection<T extends { id: string }>(
         // Merge local data that might not be in cloud yet
         for (const local of prev) {
           if (!cloudMap.has(local.id)) {
-            // ✅ Ensure local data has company_id before pushing
+            // ✅ Ensure local data has companyId and company_id before pushing
             const localWithCompany = {
               ...local,
+              companyId: companyId || 'default',
               company_id: companyId || 'default',
             } as T;
             merged.push(localWithCompany);
@@ -68,11 +69,12 @@ export function useRemoteCollection<T extends { id: string }>(
         }
         previousRef.current = merged;
         
-        // Push any local-only rows up to the cloud with company_id
+        // Push any local-only rows up to the cloud with companyId/company_id
         for (const local of prev) {
           if (!cloudMap.has(local.id)) {
             const localWithCompany = {
               ...local,
+              companyId: companyId || 'default',
               company_id: companyId || 'default',
             } as T;
             void cloudUpsert(collection, localWithCompany);
