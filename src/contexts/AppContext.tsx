@@ -16,6 +16,7 @@ import {
   getNetBalanceForAccount,
   type AccountBalanceStore,
 } from '@/lib/accounting';
+import { getItemKind } from '@/lib/stockLedger';
 import type { Salesman } from '@/types';
 import { DEFAULT_ACCOUNTS } from '@/types';
 
@@ -290,6 +291,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
       console.warn('⚠️ [AppContext] No invoices found!');
     }
   }, [invoices]);
+
+  // One-time migration: normalize item.kind values to canonical 'services'
+  useEffect(() => {
+    if (!items || items.length === 0) return;
+    let changed = false;
+    const normalized = items.map((it) => {
+      try {
+        const kind = getItemKind(it);
+        if (kind === 'services' && it.kind !== 'services') {
+          changed = true;
+          return { ...it, kind: 'services' };
+        }
+        return it;
+      } catch (err) {
+        return it;
+      }
+    });
+    if (changed) {
+      setItems(normalized);
+      addAuditEntry({
+        type: 'item',
+        action: 'migrated',
+        target: 'item.kind',
+        details: `Normalized item.kind to 'services' for company ${selectedCompanyId}`,
+      });
+      console.log('🔧 [Migration] Normalized item.kind values to "services"');
+    }
+  }, [items, setItems, selectedCompanyId]);
 
   // ✅ UPDATED: Cloud sync with company_id
   useEffect(() => {
