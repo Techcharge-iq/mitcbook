@@ -18,7 +18,14 @@ interface Sources {
 }
 
 export function getItemKind(item: Item): 'goods' | 'services' {
-  return item.kind ?? 'goods';
+  // Normalize possible legacy or user-provided values.
+  // Accept both 'services' and common variants like 'service',
+  // and default to 'goods' when kind is missing or unrecognized.
+  const raw = (item as any).kind || (item as any).type || '';
+  const k = String(raw || '').toLowerCase().trim();
+  if (!k) return 'goods';
+  if (k === 'services' || k === 'service' || k.startsWith('serv')) return 'services';
+  return 'goods';
 }
 
 export function isItemActive(item: Item): boolean {
