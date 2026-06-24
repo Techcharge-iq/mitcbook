@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
+import useIndexedDBStorage from '@/hooks/useIndexedDBStorage';
 import {
   cloudDelete,
   cloudLoadAll,
@@ -24,7 +25,11 @@ export function useRemoteCollection<T extends { id: string }>(
   initial: T[] = [],
   companyId?: string // ✅ NEW: Optional company ID for isolation
 ): [T[], (next: T[] | ((prev: T[]) => T[])) => void] {
-  const [value, setValue] = useLocalStorage<T[]>(storageKey, initial);
+  // For larger collections prefer IndexedDB persistence to avoid blocking
+  // the main thread during large JSON serialization. Use IndexedDB for
+  // collections that may grow (invoices, journal entries, payments, etc.).
+  const useStorageHook = typeof window !== 'undefined' ? useIndexedDBStorage : useLocalStorage;
+  const [value, setValue] = useStorageHook<T[]>(storageKey, initial);
   const previousRef = useRef<T[]>(value);
   const [userId, setUserId] = useState<string | null>(null);
   const syncable = isSyncedCollection(collection);

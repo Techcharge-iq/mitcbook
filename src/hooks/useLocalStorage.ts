@@ -39,13 +39,26 @@ export function useLocalStorage<T>(
     storedRef.current = storedValue;
   }, [storedValue]);
 
-  const setValue = useCallback(
-    (value: T | ((prev: T) => T)) => {
+  // Debounced async write to avoid blocking the main thread when serializing
+  // large objects. We update in-memory state synchronously but schedule the
+  // expensive JSON.stringify + localStorage.setItem work to run during idle
+  // time (or after a short timeout) so the UI remains responsive.
+  const writeTimer = useRef<number | null>(null);
+  const pendingValue = useRef<T | null>(null);
+
+  const flushWrite = useCallback(() => {
+    if (writeTimer.current != null) {
+      window.clearTimeout(writeTimer.current);
+      writeTimer.current = null;
+    }
+
+    const toWrite = pendingValue.current;
+    pendingValue.current = null;
+    if (toWrite === null) return;
+
+    const doWrite = () => {
       try {
-        const newValue = value instanceof Function ? value(storedRef.current) : value;
-        window.localStorage.setItem(key, JSON.stringify(newValue));
-        storedRef.current = newValue;
-        setStoredValue(newValue);
+        window.localStorage.setItem(key, JSON.stringify(toWrite));
       } catch (error) {
         console.error(`[localStorage] Error writing key "${key}":`, error);
         const isQuota =
@@ -53,8 +66,39 @@ export function useLocalStorage<T>(
           (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED');
         dispatchStorageError(key, isQuota);
       }
+    };
+
+    // Prefer requestIdleCallback when available so serialization happens
+    // during browser idle periods; fall back to a short timeout.
+    if (typeof (window as any).requestIdleCallback === 'function') {
+      (window as any).requestIdleCallback(() => doWrite(), { timeout: 200 });
+    } else {
+      // small delay to batch rapid updates
+      writeTimer.current = window.setTimeout(doWrite, 60);
+    }
+  }, [key]);
+
+  const setValue = useCallback(
+    (value: T | ((prev: T) => T)) => {
+      const newValue = value instanceof Function ? (value as (p: T) => T)(storedRef.current) : value;
+      // update synchronous refs/state so UI reads latest value immediately
+      storedRef.current = newValue;
+      setStoredValue(newValue);
+
+      // schedule an async write; keep only the latest pending value
+      pendingValue.current = newValue;
+
+      // debounce previous timer and schedule flush
+      if (writeTimer.current != null) {
+        window.clearTimeout(writeTimer.current);
+      }
+
+      // schedule flush shortly — this batches rapid consecutive writes
+      writeTimer.current = window.setTimeout(() => {
+        flushWrite();
+      }, 80);
     },
-    [key],
+    [flushWrite],
   );
 
   // Re-read only when the key itself changes (e.g. switching companies).
@@ -66,6 +110,28 @@ export function useLocalStorage<T>(
     storedRef.current = fresh;
     setStoredValue(fresh);
   }, [key, readValue]);
+
+  // Ensure any pending writes are flushed when the component unmounts or
+  // when the key changes (e.g., switching companies).
+  useEffect(() => {
+    return () => {
+      if (pendingValue.current !== null) {
+        try {
+          window.localStorage.setItem(key, JSON.stringify(pendingValue.current));
+        } catch (error) {
+          const isQuota =
+            error instanceof DOMException &&
+            (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED');
+          dispatchStorageError(key, isQuota);
+        }
+        pendingValue.current = null;
+      }
+      if (writeTimer.current != null) {
+        window.clearTimeout(writeTimer.current);
+        writeTimer.current = null;
+      }
+    };
+  }, [key]);
 
   return [storedValue, setValue];
 }
