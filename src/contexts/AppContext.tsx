@@ -153,7 +153,7 @@ interface AppContextType {
   generateQuotationNumber: () => string;
   generateInvoiceNumber: () => string;
   generateReceiptNumber: () => string;
-  currentCompany: Company | null;
+  currentCompany: Company | undefined;
   setCurrentCompany: (company: Company) => void;
 }
 
@@ -179,7 +179,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Get current company
   const currentCompany = useMemo(() => {
-    return companies.find(c => c.id === selectedCompanyId) || companies[0] || null;
+    return companies.find(c => c.id === selectedCompanyId);
   }, [companies, selectedCompanyId]);
 
   // Set current company
@@ -1763,7 +1763,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         payments, paymentAllocations, paymentModeDetails,
         accounts, journalEntries, accountBalances,
         vouchers, items, salesmen, settings, auditLog, isElectron,
-        currentCompany,
+        currentCompany, setCurrentCompany
       ])}
     >
       {children}
